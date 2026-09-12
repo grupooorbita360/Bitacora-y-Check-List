@@ -1,12 +1,14 @@
-# Fase 2 + Fase 3 — Backend de la Plataforma Operativa
+# Fase 2 + Fase 3 + Fase 4 — Plataforma Operativa
 
 Código fuente de la capa foundation (Config, Repository/DAO, Auth, Users,
-Departments, Permissions — Fase 2) y del núcleo de Tasks + Checklist (Fase
-3: lifecycle, history, comments, participants, subtasks, adjustments, bulk
-reassignment, Checklist_Config/Checklist_Runs y conversión a Task). Ver
-`docs/00-arquitectura-general.md`, `docs/01-modelo-datos.md` y
-`docs/06-fase-3-decisiones.md` en la raíz del repo para las decisiones de
-arquitectura detrás de este código.
+Departments, Permissions — Fase 2), el núcleo de Tasks + Checklist (Fase 3:
+lifecycle, history, comments, participants, subtasks, adjustments, bulk
+reassignment, Checklist_Config/Checklist_Runs y conversión a Task) y el
+frontend (Fase 4: Login, Layout, Navigation, Dashboard, Tasks, Task detail,
+Modals — SPA sobre Apps Script HTML Service). Ver
+`docs/00-arquitectura-general.md`, `docs/01-modelo-datos.md`,
+`docs/06-fase-3-decisiones.md` y `docs/07-fase-4-decisiones.md` en la raíz
+del repo para las decisiones de arquitectura detrás de este código.
 
 Este es el **entorno de construcción** ("afuera") del protocolo de
 despliegue (`docs/04-protocolo-despliegue.md`) — vive en el repo personal,
@@ -36,10 +38,22 @@ src/
   44_ChecklistService.js      Checklist_Config/Checklist_Runs + conversión a Task.
   90_Setup.js                bootstrapTestEnvironment(): crea hojas + siembra data de prueba (Fase 2).
   95_SetupTasks.js           Crea/siembra las hojas de Tasks y Checklist (Fase 3).
+  98_Api.js                  Única capa que el cliente invoca (wrappers delgados sobre los Services).
+  99_WebApp.js               doGet() + include() — entry point del Web App (Fase 4).
+html/
+  Index.html                 Shell: incluye Styles + los Client_*.
+  Styles.html                 CSS (desktop-first).
+  Client_Api.html             callServer() — google.script.run en prod, fetch en el dev server.
+  Client_State.html           Estado de la app, router por hash, toasts, formatos.
+  Client_Views.html           Render de Login/Dashboard/Tasks/Task Detail.
+  Client_Modals.html          Modales de acción (Nueva Task, Reasignar, Ajustes, etc.).
+  Client_Main.html            Bootstrap de la app (login + primera render).
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
   *.test.js                  Tests (node:test): repository, auth, permission, taskLifecycle, checklist.
+devserver/
+  server.js                  Servidor Node local para probar html/ en un navegador real — ver abajo.
 ```
 
 Los archivos de `src/` llevan prefijo numérico porque Apps Script no tiene
@@ -60,6 +74,27 @@ simula `SpreadsheetApp`, `PropertiesService`, `Utilities` y `Session` en
 memoria con Node puro (usa `node:crypto` para el hash SHA-256 y HMAC, sin
 dependencias externas).
 
+## Probar el frontend en un navegador real (sin Apps Script)
+
+```
+cd apps-script
+npm run dev
+```
+
+Levanta `http://localhost:8080` con el mismo backend que corre bajo test
+(mocks incluidos) y sirve `html/Index.html` resolviendo sus `include(...)`
+igual que `HtmlService`. `Client_Api.html` detecta que no existe
+`google.script.run` y usa `fetch` contra este servidor — el mismo
+`Index.html` corre sin cambios cuando se copie a Apps Script real.
+
+Por defecto entra automáticamente como Eduardo (vía DIRECT, sin PIN). Para
+probar el selector + PIN (email compartido), abrir
+`http://localhost:8080/?email=executiveservices.team%40example.test` y
+usar cualquiera de los Login ID de prueba (`m.moreno`, `a.hernandez`,
+`a.torres`, `b.castillo`, `c.jimenez`, `d.fuentes`, `e.ramos`) con PIN
+`1234`. El estado (Tasks creadas, etc.) vive solo en memoria del proceso —
+se reinicia al reiniciar `npm run dev`.
+
 ## Instalar en el Sheet personal de prueba
 
 1. En Google Drive (cuenta personal), crear un Google Sheet nuevo y abrir
@@ -67,7 +102,9 @@ dependencias externas).
 2. Copiar el contenido de `appsscript.json` al manifiesto del proyecto
    (`Ver → Mostrar manifiesto de proyecto` si no aparece).
 3. Crear un archivo de script por cada archivo de `src/`, respetando el
-   nombre (sin la extensión `.js`, Apps Script la agrega sola).
+   nombre (sin la extensión `.js`, Apps Script la agrega sola). Crear un
+   archivo **HTML** (no script) por cada archivo de `html/`, también con el
+   mismo nombre.
 4. En **Configuración del proyecto → Propiedades del script**, agregar
    `SESSION_SECRET` con un valor aleatorio (ej. generado con
    `Utilities.getUuid()` desde el editor). No hace falta `SHEET_ID` si el
@@ -82,6 +119,11 @@ dependencias externas).
    documentada en `docs/01-modelo-datos.md` y `docs/06-fase-3-decisiones.md`.
    Si ya la corriste para Fase 2, correrla de nuevo es seguro (idempotente):
    solo agrega lo que falte, sin duplicar nada.
+6. **Implementar → Nueva implementación → Aplicación web.** Ejecutar como:
+   "Usuario que accede" (`USER_ACCESSING`, ya viene en `appsscript.json`);
+   acceso: cualquiera dentro del dominio (o "Cualquier usuario" si se
+   prueba desde una cuenta personal fuera de Workspace — ver limitación
+   abajo). Abrir la URL que entrega el despliegue.
 
 ## Limitación conocida al probar la vía DIRECT (email único)
 
@@ -121,5 +163,8 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
   `TaskService` invoca todavía: `CREATE`, `EDIT`, `ASSIGN`, `VIEW_HISTORY`,
   `VIEW_SUBTASKS` (la creación se sigue gateando solo por `Task_Config`,
   más específico por Task Type). Ver `docs/06-fase-3-decisiones.md`.
-- Frontend/HTML Service (Login, Layout, Dashboard, Task detail) — Fase 4.
+- Vista de Checklist en el frontend (el backend de Fase 3 ya existe:
+  `api_listChecklist`/`api_recordChecklistRun`/
+  `api_convertChecklistRunToTask`) — no estaba en la lista de vistas
+  pedida para Fase 4, ver `docs/07-fase-4-decisiones.md`.
 - People — Fase 5.

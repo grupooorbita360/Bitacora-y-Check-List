@@ -12,12 +12,10 @@ desde el día uno para poder migrar a una base de datos real (Postgres/
 Supabase, mismo patrón que HotelOS) sin reconstruir frontend ni lógica de
 negocio.
 
-## Estado actual: Fase 3 entregada
+## Estado actual: Fase 4 entregada
 
-Fase 1 (arquitectura + limpieza de datos) y Fase 2 (Config/Auth/Users/
-Departments/Permissions) están cerradas — Fase 2 ya fue instalada y
-validada por Eduardo en su Sheet personal real (login directo y con PIN
-confirmados). El detalle vive en [`docs/`](docs/):
+Fases 1-3 están cerradas e instaladas/validadas por Eduardo en el ambiente
+real (Sheet personal + Apps Script). El detalle vive en [`docs/`](docs/):
 
 | Documento | Contenido |
 |---|---|
@@ -27,23 +25,25 @@ confirmados). El detalle vive en [`docs/`](docs/):
 | [`docs/03-anexo-a-auditoria.md`](docs/03-anexo-a-auditoria.md) | Auditoría prompt vs. datos reales — decisiones cerradas (registro histórico) |
 | [`docs/04-protocolo-despliegue.md`](docs/04-protocolo-despliegue.md) | Entorno de construcción (repo/Sheet personal) vs. entorno de entrega (Workspace empresa) |
 | [`docs/05-roadmap.md`](docs/05-roadmap.md) | Fases 1–7 y estado de cada una |
-| [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Cómo se resolvió Task_Permissions/Task_Assignment_Config/Task_History con los datos reales, y qué queda pendiente |
+| [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Cómo se resolvió Task_Permissions/Task_Assignment_Config/Task_History con los datos reales |
+| [`docs/07-fase-4-decisiones.md`](docs/07-fase-4-decisiones.md) | Qué se construyó del frontend, qué queda fuera (Checklist UI) y cómo se probó en navegador real |
 
-Fase 3 (Tasks + Checklist: CRUD, lifecycle, history, comments,
-participants, subtasks, adjustments, bulk reassignment, Checklist_Config/
-Checklist_Runs y conversión a Task) ya tiene código y tests: ver
-[`apps-script/`](apps-script/). Incluye las 87 reglas reales de
-`Task_Permissions` y las 19 de `Task_Assignment_Config` (confirmadas por
-Eduardo), leídas como datos de configuración en vez de derivadas por
-lógica. Corre `cd apps-script && npm test` para validar toda la lógica sin
-depender de un Sheet real (53 tests, entre Fase 2 y Fase 3).
+Fase 4 (Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task
+detail, Modals) ya tiene código: ver [`apps-script/html/`](apps-script/html/)
+y `apps-script/src/98_Api.js`/`99_WebApp.js`. Es una SPA servida por Apps
+Script HTML Service, desktop-first, con progressive disclosure real (el
+backend decide qué botones/acciones mostrar según permisos). Se probó de
+punta a punta en Chromium real contra el backend real (no mocks visuales)
+usando un dev server local — `cd apps-script && npm run dev` y abrir
+`http://localhost:8080` — ver `docs/07-fase-4-decisiones.md` para el
+detalle de qué se verificó (lifecycle completo, flujo de Adjustment con
+Agent bloqueado + Supervisor aprobando, subtasks, participants, bulk
+reassign, los 3 modos de Auth).
 
-**Aún no se ha instalado en el Sheet real.** El siguiente paso es
-instalarla (mismo Sheet de Fase 2, `bootstrapTestEnvironment()` ya crea y
-siembra las hojas de Tasks/Checklist) y validar el flujo real antes de
-avanzar a Fase 4. Lo que queda pendiente de refinamiento (acciones reales
-sembradas pero aún no invocadas por `TaskService`, delegación
-cross-departamento) está señalado en `docs/06-fase-3-decisiones.md`.
+**Aún no se ha instalado en el Sheet/Apps Script real.** El siguiente paso
+es copiar `apps-script/src/*.js` + `apps-script/html/*.html` al proyecto
+de Apps Script de prueba, desplegar como Web App (`Ejecutar como: Usuario
+que accede`) y repetir el mismo recorrido ya con los datos reales.
 
 ## Principio rector
 

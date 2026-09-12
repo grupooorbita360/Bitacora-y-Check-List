@@ -1,0 +1,144 @@
+<script>
+  var App = {
+    token: localStorage.getItem('sessionToken') || null,
+    user: null,
+    departments: [],
+    route: { name: 'login' }
+  };
+
+  function setToken(token) {
+    App.token = token;
+    if (token) {
+      localStorage.setItem('sessionToken', token);
+    } else {
+      localStorage.removeItem('sessionToken');
+    }
+  }
+
+  function logout() {
+    setToken(null);
+    App.user = null;
+    navigate('login');
+  }
+
+  // ---- Router muy simple basado en hash: #/dashboard, #/tasks, #/tasks/T00001 ----
+  function navigate(name, params) {
+    params = params || {};
+    if (name === 'task-detail') {
+      location.hash = '#/tasks/' + params.taskId;
+    } else if (name === 'tasks') {
+      location.hash = '#/tasks';
+    } else if (name === 'dashboard') {
+      location.hash = '#/dashboard';
+    } else if (name === 'login') {
+      App.route = { name: 'login' };
+      render();
+    }
+  }
+
+  function parseRoute() {
+    var hash = location.hash.replace(/^#\/?/, '');
+    var parts = hash.split('/').filter(Boolean);
+    if (parts[0] === 'tasks' && parts[1]) {
+      return { name: 'task-detail', taskId: parts[1] };
+    }
+    if (parts[0] === 'tasks') {
+      return { name: 'tasks' };
+    }
+    return { name: 'dashboard' };
+  }
+
+  window.addEventListener('hashchange', function () {
+    if (!App.user) return;
+    App.route = parseRoute();
+    render();
+  });
+
+  // ---- Utilidades de formato/escape ----
+  function escapeHtml(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function formatDate(value) {
+    if (!value) return '—';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    return d.toLocaleDateString('es-MX', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  function formatDateTime(value) {
+    if (!value) return '—';
+    var d = new Date(value);
+    if (isNaN(d.getTime())) return String(value);
+    return d.toLocaleString('es-MX', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+
+  var STATUS_LABELS = {
+    PENDING: 'Pendiente',
+    IN_PROGRESS: 'En Progreso',
+    WAITING: 'En Espera',
+    COMPLETED: 'Completada',
+    CANCELLED: 'Cancelada'
+  };
+
+  var ACTION_LABELS = {
+    OPEN: 'Abrir',
+    COMPLETE: 'Completar',
+    SNOOZE: 'Posponer',
+    RESUME: 'Reanudar',
+    CANCEL: 'Cancelar',
+    REOPEN: 'Reabrir',
+    REASSIGN: 'Reasignar',
+    TAKE_OWNERSHIP: 'Tomar Ownership',
+    ADD_COMMENT: 'Comentar',
+    ADD_PARTICIPANT: 'Agregar Participante',
+    REMOVE_PARTICIPANT: 'Quitar Participante',
+    CREATE_SUBTASK: 'Agregar Subtarea',
+    REQUEST_ADJUSTMENT: 'Pedir Ajuste'
+  };
+
+  var EVENT_LABELS = {
+    CREATED: 'Task creada',
+    ASSIGNED: 'Asignada',
+    OPENED: 'Abierta',
+    OWNERSHIP_TAKEN: 'Ownership tomado',
+    COMPLETED: 'Completada',
+    CANCELLED: 'Cancelada',
+    REOPENED: 'Reabierta',
+    SNOOZED: 'Pospuesta',
+    RESUMED: 'Reanudada',
+    COMMENT_ADDED: 'Comentario',
+    REASSIGNED: 'Reasignada',
+    ADJUSTMENT_REQUESTED: 'Ajuste solicitado',
+    ADJUSTMENT_APPROVED: 'Ajuste aprobado',
+    ADJUSTMENT_REJECTED: 'Ajuste rechazado',
+    PARTICIPANT_ADDED: 'Participante agregado',
+    PARTICIPANT_REMOVED: 'Participante quitado',
+    SUBTASK_CREATED: 'Subtarea creada',
+    SUBTASK_COMPLETED: 'Subtarea completada'
+  };
+
+  // ---- Toasts ----
+  function toast(message, type) {
+    var stack = document.getElementById('toast-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'toast-stack';
+      stack.className = 'toast-stack';
+      document.body.appendChild(stack);
+    }
+    var el = document.createElement('div');
+    el.className = 'toast' + (type ? ' ' + type : '');
+    el.textContent = message;
+    stack.appendChild(el);
+    setTimeout(function () {
+      el.remove();
+    }, 4000);
+  }
+
+  function showError(err) {
+    toast(err && err.message ? err.message : String(err), 'error');
+  }
+</script>

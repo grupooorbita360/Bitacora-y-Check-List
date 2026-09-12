@@ -1,0 +1,49 @@
+<script>
+  async function submitPinLogin() {
+    var loginId = document.getElementById('login-user').value;
+    var pin = document.getElementById('login-pin').value;
+    try {
+      var token = await Api.loginWithPin(loginId, pin);
+      setToken(token);
+      await afterLogin(token);
+    } catch (e) {
+      document.getElementById('login-error').textContent = e.message;
+    }
+  }
+
+  async function afterLogin(token) {
+    var boot = await Api.bootstrap(token);
+    App.user = boot.user;
+    App.departments = boot.departments;
+    App.route = parseRoute();
+    render();
+  }
+
+  async function bootApp() {
+    App.loginState = { mode: 'LOADING' };
+    try {
+      if (App.token) {
+        try {
+          await afterLogin(App.token);
+          return;
+        } catch (e) {
+          // Token inválido/expirado — se limpia y se reintenta como si no
+          // hubiera sesión guardada.
+          setToken(null);
+        }
+      }
+      var result = await Api.startLogin();
+      if (result.mode === 'DIRECT') {
+        await afterLogin(null);
+        return;
+      }
+      App.loginState = result; // SELECT_PIN o DENIED
+      render();
+    } catch (e) {
+      App.loginState = { mode: 'ERROR', message: e.message };
+      render();
+    }
+  }
+
+  bootApp();
+</script>

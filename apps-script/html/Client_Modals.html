@@ -1,0 +1,412 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Sistema genérico de modal (overlay + caja) reutilizado por todos los
+  // formularios de acción — progressive disclosure: cada modal solo pide
+  // lo que esa acción específica necesita.
+  // ---------------------------------------------------------------------
+  function openModal(html) {
+    closeModal();
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-overlay';
+    overlay.innerHTML = '<div class="modal-box">' + html + '</div>';
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeModal();
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function closeModal() {
+    var el = document.getElementById('modal-overlay');
+    if (el) el.remove();
+  }
+
+  function userOptions(users, defaultUserId) {
+    return users
+      .map(function (u) {
+        return (
+          '<option value="' + u['User ID'] + '"' + (u['User ID'] === defaultUserId ? ' selected' : '') + '>' +
+          escapeHtml(u['Nombre Corto']) + '</option>'
+        );
+      })
+      .join('');
+  }
+
+  function deptOptions(depts) {
+    return depts
+      .map(function (d) {
+        return '<option value="' + d['Department ID'] + '">' + escapeHtml(d.Nombre) + '</option>';
+      })
+      .join('');
+  }
+
+  async function refreshTaskDetail(taskId) {
+    if (App.route.name === 'task-detail' && App.route.taskId === taskId) {
+      render();
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Lifecycle: OPEN/RESUME (sin comentario), COMPLETE/CANCEL/REOPEN (con
+  // comentario, modal genérico), SNOOZE (comentario + fecha de revisión).
+  // ---------------------------------------------------------------------
+  async function runTransition(taskId, action) {
+    try {
+      await Api.transitionTask(App.token, taskId, action, {});
+      toast('Listo.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  function openCommentModal(taskId, action, title) {
+    openModal(
+      '<h3>' + escapeHtml(title) + '</h3>' +
+      '<p class="modal-subtitle">Esta acción requiere un comentario.</p>' +
+      '<div class="field"><label>Comentario</label><textarea id="modal-comment" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitCommentModal(\'' + taskId + '\',\'' + action + '\')">Confirmar</button></div>'
+    );
+  }
+
+  async function submitCommentModal(taskId, action) {
+    var comment = document.getElementById('modal-comment').value.trim();
+    if (!comment) {
+      document.getElementById('modal-error').textContent = 'El comentario es obligatorio.';
+      return;
+    }
+    try {
+      await Api.transitionTask(App.token, taskId, action, { comment: comment });
+      closeModal();
+      toast('Listo.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  function openSnoozeModal(taskId) {
+    openModal(
+      '<h3>Posponer Task</h3>' +
+      '<p class="modal-subtitle">SNOOZE requiere comentario y fecha de revisión.</p>' +
+      '<div class="field"><label>Comentario</label><textarea id="modal-comment" rows="3"></textarea></div>' +
+      '<div class="field"><label>Fecha de revisión</label><input id="modal-review-date" type="date" /></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitSnooze(\'' + taskId + '\')">Confirmar</button></div>'
+    );
+  }
+
+  async function submitSnooze(taskId) {
+    var comment = document.getElementById('modal-comment').value.trim();
+    var reviewDate = document.getElementById('modal-review-date').value;
+    if (!comment || !reviewDate) {
+      document.getElementById('modal-error').textContent = 'Comentario y fecha de revisión son obligatorios.';
+      return;
+    }
+    try {
+      await Api.transitionTask(App.token, taskId, 'SNOOZE', { comment: comment, reviewDate: reviewDate });
+      closeModal();
+      toast('Task pospuesta.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Ownership / reassignment
+  // ---------------------------------------------------------------------
+  async function openTakeOwnershipModal(taskId) {
+    var t = App.currentDetail.task;
+    var users = await Api.listAssignableUsers(App.token, t.Department);
+    openModal(
+      '<h3>Tomar Ownership</h3>' +
+      '<p class="modal-subtitle">No crea un Participant — el Owner anterior queda en el historial.</p>' +
+      '<div class="field"><label>Nuevo Owner</label><select id="modal-owner">' + userOptions(users, App.user['User ID']) + '</select></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitTakeOwnership(\'' + taskId + '\')">Confirmar</button></div>'
+    );
+  }
+
+  async function submitTakeOwnership(taskId) {
+    var newOwnerId = document.getElementById('modal-owner').value;
+    try {
+      await Api.takeOwnership(App.token, taskId, newOwnerId);
+      closeModal();
+      toast('Ownership actualizado.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  async function openReassignModal(taskId) {
+    var t = App.currentDetail.task;
+    var users = await Api.listAssignableUsers(App.token, t.Department);
+    openModal(
+      '<h3>Reasignar Task</h3>' +
+      '<div class="field"><label>Nuevo Owner</label><select id="modal-owner">' + userOptions(users) + '</select></div>' +
+      '<div class="field"><label>Comentario (opcional)</label><textarea id="modal-comment" rows="2"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitReassign(\'' + taskId + '\')">Reasignar</button></div>'
+    );
+  }
+
+  async function submitReassign(taskId) {
+    var newOwnerId = document.getElementById('modal-owner').value;
+    var comment = document.getElementById('modal-comment').value.trim();
+    try {
+      await Api.reassignTask(App.token, taskId, newOwnerId, comment);
+      closeModal();
+      toast('Task reasignada.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  async function openBulkReassignModal() {
+    var tasks = await Api.listTasks(App.token, App.taskFilters);
+    if (!tasks.length) {
+      toast('No hay Tasks visibles con el filtro actual.', 'error');
+      return;
+    }
+    var departmentId = App.user['Department ID'] || tasks[0].Department;
+    var users = await Api.listAssignableUsers(App.token, departmentId);
+    var checkboxes = tasks
+      .map(function (t) {
+        return (
+          '<label style="display:flex;gap:8px;align-items:center;padding:4px 0;">' +
+          '<input type="checkbox" class="bulk-task-checkbox" value="' + t['Task ID'] + '" style="width:auto" />' +
+          escapeHtml(t['Task Title']) + ' <span class="view-subtitle" style="margin:0;">(' + t.Status + ')</span></label>'
+        );
+      })
+      .join('');
+    openModal(
+      '<h3>Reasignar en bloque</h3>' +
+      '<div class="field"><label>Nuevo Owner</label><select id="modal-owner">' + userOptions(users) + '</select></div>' +
+      '<div class="field"><label>Comentario (opcional)</label><textarea id="modal-comment" rows="2"></textarea></div>' +
+      '<div class="field" style="max-height:200px;overflow-y:auto;border:1px solid var(--color-border);border-radius:6px;padding:8px;">' +
+      checkboxes +
+      '</div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitBulkReassign()">Reasignar</button></div>'
+    );
+  }
+
+  async function submitBulkReassign() {
+    var ids = Array.prototype.slice
+      .call(document.querySelectorAll('.bulk-task-checkbox:checked'))
+      .map(function (el) {
+        return el.value;
+      });
+    if (!ids.length) {
+      document.getElementById('modal-error').textContent = 'Selecciona al menos una Task.';
+      return;
+    }
+    var newOwnerId = document.getElementById('modal-owner').value;
+    var comment = document.getElementById('modal-comment').value.trim();
+    try {
+      var results = await Api.bulkReassign(App.token, ids, newOwnerId, comment);
+      closeModal();
+      var ok = results.filter(function (r) {
+        return r.ok;
+      }).length;
+      var fail = results.length - ok;
+      toast(ok + ' reasignada(s)' + (fail ? ', ' + fail + ' fallaron' : '') + '.', fail ? 'error' : 'success');
+      render();
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Adjustments
+  // ---------------------------------------------------------------------
+  async function openRequestAdjustmentModal(taskId) {
+    var t = App.currentDetail.task;
+    var users = await Api.listAssignableUsers(App.token, t.Department);
+    openModal(
+      '<h3>Pedir Ajuste</h3>' +
+      '<p class="modal-subtitle">Tu Supervisor o Manager debe aprobarlo (Task_Adjustments).</p>' +
+      '<div class="field"><label>Tipo</label><select id="modal-type" onchange="toggleAdjustmentFields()">' +
+      '<option value="REASSIGN">Reasignar</option>' +
+      '<option value="CHANGE_DEPARTMENT">Cambiar Departamento</option>' +
+      '<option value="REASSIGN_AND_CHANGE_DEPARTMENT">Reasignar y Cambiar Departamento</option>' +
+      '<option value="OTHER">Otro</option>' +
+      '</select></div>' +
+      '<div class="field" id="adj-owner-field"><label>Nuevo Owner</label><select id="modal-new-owner">' + userOptions(users) + '</select></div>' +
+      '<div class="field" id="adj-dept-field" style="display:none"><label>Nuevo Departamento</label><select id="modal-new-dept">' +
+      deptOptions(App.departments) +
+      '</select></div>' +
+      '<div class="field"><label>Motivo</label><textarea id="modal-reason" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitRequestAdjustment(\'' + taskId + '\')">Enviar</button></div>'
+    );
+  }
+
+  function toggleAdjustmentFields() {
+    var type = document.getElementById('modal-type').value;
+    document.getElementById('adj-owner-field').style.display =
+      type === 'REASSIGN' || type === 'REASSIGN_AND_CHANGE_DEPARTMENT' ? '' : 'none';
+    document.getElementById('adj-dept-field').style.display =
+      type === 'CHANGE_DEPARTMENT' || type === 'REASSIGN_AND_CHANGE_DEPARTMENT' ? '' : 'none';
+  }
+
+  async function submitRequestAdjustment(taskId) {
+    var type = document.getElementById('modal-type').value;
+    var reason = document.getElementById('modal-reason').value.trim();
+    var details = { reason: reason };
+    var ownerField = document.getElementById('modal-new-owner');
+    var deptField = document.getElementById('modal-new-dept');
+    if (ownerField.offsetParent !== null) details.newOwnerId = ownerField.value;
+    if (deptField.offsetParent !== null) details.newDepartmentId = deptField.value;
+    try {
+      await Api.requestAdjustment(App.token, taskId, type, details);
+      closeModal();
+      toast('Ajuste solicitado.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  function openResolveAdjustmentModal(adjustmentId, decision) {
+    openModal(
+      '<h3>' + (decision === 'APPROVED' ? 'Aprobar' : 'Rechazar') + ' Ajuste</h3>' +
+      '<div class="field"><label>Comentario</label><textarea id="modal-comment" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitResolveAdjustment(\'' + adjustmentId + '\',\'' + decision + '\')">Confirmar</button></div>'
+    );
+  }
+
+  async function submitResolveAdjustment(adjustmentId, decision) {
+    var comment = document.getElementById('modal-comment').value.trim();
+    try {
+      await Api.resolveAdjustment(App.token, adjustmentId, decision, comment);
+      closeModal();
+      toast('Ajuste resuelto.', 'success');
+      if (App.route.name === 'task-detail') render();
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // New Task
+  // ---------------------------------------------------------------------
+  async function openNewTaskModal() {
+    var departmentId = App.user['Department ID'] || (App.departments[0] && App.departments[0]['Department ID']);
+    var types = await Api.getAllowedTaskTypes(App.token, departmentId);
+    var users = await Api.listAssignableUsers(App.token, departmentId);
+    if (!types.length) {
+      toast('Tu rol no tiene Task Types configurados para este departamento.', 'error');
+      return;
+    }
+    openModal(
+      '<h3>Nueva Task</h3>' +
+      '<div class="field"><label>Título</label><input id="modal-title" /></div>' +
+      '<div class="field"><label>Descripción</label><textarea id="modal-description" rows="2"></textarea></div>' +
+      '<div class="field"><label>Tipo</label><select id="modal-type">' +
+      types.map(function (t) { return '<option>' + escapeHtml(t) + '</option>'; }).join('') +
+      '</select></div>' +
+      '<div class="field"><label>Owner</label><select id="modal-owner">' + userOptions(users, App.user['User ID']) + '</select></div>' +
+      '<div class="field"><label>Prioridad</label><select id="modal-priority">' +
+      '<option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option>' +
+      '</select></div>' +
+      '<div class="field"><label>Fecha límite (opcional)</label><input id="modal-due-date" type="date" /></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitNewTask(\'' + departmentId + '\')">Crear</button></div>'
+    );
+  }
+
+  async function submitNewTask(departmentId) {
+    var input = {
+      title: document.getElementById('modal-title').value.trim(),
+      description: document.getElementById('modal-description').value.trim(),
+      type: document.getElementById('modal-type').value,
+      department: departmentId,
+      ownerId: document.getElementById('modal-owner').value,
+      priority: document.getElementById('modal-priority').value,
+      dueDate: document.getElementById('modal-due-date').value
+    };
+    if (!input.title) {
+      document.getElementById('modal-error').textContent = 'El título es obligatorio.';
+      return;
+    }
+    try {
+      var task = await Api.createTask(App.token, input);
+      closeModal();
+      toast('Task creada.', 'success');
+      navigate('task-detail', { taskId: task['Task ID'] });
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Comments / Subtasks / Participants (formularios inline, no modal)
+  // ---------------------------------------------------------------------
+  async function submitComment(taskId) {
+    var input = document.getElementById('new-comment-input');
+    var text = input.value.trim();
+    if (!text) return;
+    try {
+      await Api.addComment(App.token, taskId, text);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitSubtask(taskId) {
+    var input = document.getElementById('new-subtask-input');
+    var title = input.value.trim();
+    if (!title) return;
+    try {
+      await Api.addSubtask(App.token, taskId, title);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function completeSubtask(subtaskId) {
+    try {
+      await Api.completeSubtask(App.token, subtaskId);
+      await refreshTaskDetail(App.route.taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitAddParticipant(taskId) {
+    var input = document.getElementById('new-participant-input');
+    var userId = input.value.trim();
+    if (!userId) return;
+    try {
+      await Api.addParticipant(App.token, taskId, userId);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitRemoveParticipant(taskId, userId) {
+    try {
+      await Api.removeParticipant(App.token, taskId, userId);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+</script>

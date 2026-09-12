@@ -1,0 +1,119 @@
+<script>
+  // callServer(fnName, ...args) -> Promise. Usa google.script.run en
+  // producción (Apps Script); si no existe (dev server local), cae a
+  // fetch contra /rpc/<fnName> — ver apps-script/devserver/server.js.
+  // El resto del cliente nunca llama a google.script.run directamente.
+  function callServer(fnName) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      if (window.google && window.google.script && window.google.script.run) {
+        var runner = google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(function (err) {
+            reject(new Error(err && err.message ? err.message : String(err)));
+          });
+        runner[fnName].apply(runner, args);
+        return;
+      }
+      fetch('/rpc/' + fnName, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(args)
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function (pair) {
+          if (!pair.ok || !pair.body.ok) {
+            reject(new Error((pair.body && pair.body.error) || 'Error de servidor'));
+            return;
+          }
+          resolve(pair.body.result);
+        })
+        .catch(reject);
+    });
+  }
+
+  var Api = {
+    startLogin: function () {
+      return callServer('api_startLogin');
+    },
+    loginWithPin: function (loginId, pin) {
+      return callServer('api_loginWithPin', loginId, pin);
+    },
+    bootstrap: function (token) {
+      return callServer('api_bootstrap', token);
+    },
+    getDashboard: function (token) {
+      return callServer('api_getDashboard', token);
+    },
+    listTasks: function (token, filters) {
+      return callServer('api_listTasks', token, filters);
+    },
+    createTask: function (token, input) {
+      return callServer('api_createTask', token, input);
+    },
+    getAllowedTaskTypes: function (token, departmentId) {
+      return callServer('api_getAllowedTaskTypes', token, departmentId);
+    },
+    listDepartments: function () {
+      return callServer('api_listDepartments');
+    },
+    listAssignableUsers: function (token, departmentId) {
+      return callServer('api_listAssignableUsers', token, departmentId);
+    },
+    getTaskDetail: function (token, taskId) {
+      return callServer('api_getTaskDetail', token, taskId);
+    },
+    transitionTask: function (token, taskId, action, opts) {
+      return callServer('api_transitionTask', token, taskId, action, opts);
+    },
+    takeOwnership: function (token, taskId, newOwnerId) {
+      return callServer('api_takeOwnership', token, taskId, newOwnerId);
+    },
+    reassignTask: function (token, taskId, newOwnerId, comment) {
+      return callServer('api_reassignTask', token, taskId, newOwnerId, comment);
+    },
+    canBulkReassign: function (token) {
+      return callServer('api_canBulkReassign', token);
+    },
+    bulkReassign: function (token, taskIds, newOwnerId, comment) {
+      return callServer('api_bulkReassign', token, taskIds, newOwnerId, comment);
+    },
+    addComment: function (token, taskId, text) {
+      return callServer('api_addComment', token, taskId, text);
+    },
+    addParticipant: function (token, taskId, userId, roleInTask) {
+      return callServer('api_addParticipant', token, taskId, userId, roleInTask);
+    },
+    removeParticipant: function (token, taskId, userId) {
+      return callServer('api_removeParticipant', token, taskId, userId);
+    },
+    addSubtask: function (token, taskId, title) {
+      return callServer('api_addSubtask', token, taskId, title);
+    },
+    completeSubtask: function (token, subtaskId) {
+      return callServer('api_completeSubtask', token, subtaskId);
+    },
+    requestAdjustment: function (token, taskId, type, details) {
+      return callServer('api_requestAdjustment', token, taskId, type, details);
+    },
+    resolveAdjustment: function (token, adjustmentId, decision, comment) {
+      return callServer('api_resolveAdjustment', token, adjustmentId, decision, comment);
+    },
+    cancelAdjustment: function (token, adjustmentId, reason) {
+      return callServer('api_cancelAdjustment', token, adjustmentId, reason);
+    },
+    listChecklist: function (token, departmentId) {
+      return callServer('api_listChecklist', token, departmentId);
+    },
+    recordChecklistRun: function (token, checklistConfigId, resultado, valor, comentario) {
+      return callServer('api_recordChecklistRun', token, checklistConfigId, resultado, valor, comentario);
+    },
+    convertChecklistRunToTask: function (token, runId, overrides) {
+      return callServer('api_convertChecklistRunToTask', token, runId, overrides);
+    }
+  };
+</script>

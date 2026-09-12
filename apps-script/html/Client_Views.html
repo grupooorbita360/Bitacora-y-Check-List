@@ -1,0 +1,355 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Dispatcher principal: decide login vs. shell+contenido según la ruta.
+  // ---------------------------------------------------------------------
+  async function render() {
+    var app = document.getElementById('app');
+    if (!App.user) {
+      app.innerHTML = renderLoginHtml();
+      return;
+    }
+    app.innerHTML = renderShellHtml();
+    var content = document.getElementById('content');
+    content.innerHTML = '<div class="empty-state">Cargando…</div>';
+    try {
+      if (App.route.name === 'dashboard') {
+        content.innerHTML = await renderDashboardHtml();
+      } else if (App.route.name === 'tasks') {
+        content.innerHTML = await renderTasksHtml();
+      } else if (App.route.name === 'task-detail') {
+        content.innerHTML = await renderTaskDetailHtml(App.route.taskId);
+      }
+    } catch (e) {
+      content.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>';
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Login (sección: Auth de dos vías, docs/01-modelo-datos.md)
+  // ---------------------------------------------------------------------
+  function renderLoginHtml() {
+    var state = App.loginState || { mode: 'LOADING' };
+
+    if (state.mode === 'LOADING') {
+      return '<div class="login-screen"><div class="login-card"><p class="subtitle">Verificando sesión…</p></div></div>';
+    }
+    if (state.mode === 'DENIED') {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+        '<h1>Acceso no configurado</h1>' +
+        '<p class="subtitle">Tu correo no está registrado como usuario activo. Contacta a un Admin para que te dé de alta.</p>' +
+        '</div></div>'
+      );
+    }
+    if (state.mode === 'ERROR') {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+        '<h1>No se pudo iniciar sesión</h1>' +
+        '<p class="login-error">' + escapeHtml(state.message) + '</p>' +
+        '</div></div>'
+      );
+    }
+
+    var options = state.candidates
+      .map(function (c) {
+        return '<option value="' + escapeHtml(c.loginId) + '">' + escapeHtml(c.nombreCorto) + ' (' + escapeHtml(c.loginId) + ')</option>';
+      })
+      .join('');
+    return (
+      '<div class="login-screen"><div class="login-card">' +
+      '<h1>¿Quién eres?</h1>' +
+      '<p class="subtitle">Este correo es compartido por varios usuarios — elige el tuyo e ingresa tu PIN.</p>' +
+      '<div class="field"><label>Usuario</label><select id="login-user">' + options + '</select></div>' +
+      '<div class="field"><label>PIN (4 dígitos)</label>' +
+      '<input id="login-pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" /></div>' +
+      '<button class="primary" style="width:100%" onclick="submitPinLogin()">Entrar</button>' +
+      '<div id="login-error" class="login-error"></div>' +
+      '</div></div>'
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Layout / Navigation (desktop-first: sidebar fijo + topbar)
+  // ---------------------------------------------------------------------
+  function renderShellHtml() {
+    var onTasks = App.route.name === 'tasks' || App.route.name === 'task-detail';
+    return (
+      '<div class="app-shell">' +
+      '<aside class="sidebar">' +
+      '<div class="brand">Plataforma Operativa</div>' +
+      '<nav>' +
+      '<button class="' + (App.route.name === 'dashboard' ? 'active' : '') + '" onclick="navigate(\'dashboard\')"><span class="label">Dashboard</span></button>' +
+      '<button class="' + (onTasks ? 'active' : '') + '" onclick="navigate(\'tasks\')"><span class="label">Tasks</span></button>' +
+      '</nav>' +
+      '</aside>' +
+      '<div class="main-column">' +
+      '<div class="topbar">' +
+      '<div></div>' +
+      '<div class="user-info">' +
+      '<strong>' + escapeHtml(App.user.Nombre) + '</strong>' +
+      '<span>' + escapeHtml((App.user.roles || []).join(', ')) + '</span>' +
+      '<button onclick="logout()">Salir</button>' +
+      '</div>' +
+      '</div>' +
+      '<div class="content" id="content"></div>' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Dashboard
+  // ---------------------------------------------------------------------
+  async function renderDashboardHtml() {
+    var stats = await Api.getDashboard(App.token);
+    return (
+      '<h2 class="view-title">Dashboard</h2>' +
+      '<p class="view-subtitle">Resumen de tus Tasks</p>' +
+      '<div class="stat-grid">' +
+      statCard(stats.myTasks.pending, 'Pendientes') +
+      statCard(stats.myTasks.inProgress, 'En Progreso') +
+      statCard(stats.myTasks.waiting, 'En Espera') +
+      statCard(stats.myTasks.overdue, 'Vencidas', true) +
+      '</div>' +
+      '<button class="primary" onclick="navigate(\'tasks\')">Ver Tasks</button>'
+    );
+  }
+
+  function statCard(value, label, overdue) {
+    return (
+      '<div class="stat-card' + (overdue ? ' overdue' : '') + '">' +
+      '<div class="value">' + value + '</div>' +
+      '<div class="label">' + label + '</div>' +
+      '</div>'
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Tasks (lista + filtros + búsqueda)
+  // ---------------------------------------------------------------------
+  App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, search: '' };
+
+  async function renderTasksHtml() {
+    var tasks = await Api.listTasks(App.token, App.taskFilters);
+    var canBulk = await Api.canBulkReassign(App.token);
+    var rows = tasks.map(taskRowHtml).join('');
+    return (
+      '<h2 class="view-title">Tasks</h2>' +
+      '<p class="view-subtitle">' + tasks.length + ' Task(s)</p>' +
+      '<div class="toolbar">' +
+      '<select onchange="setTaskFilter(\'status\', this.value)">' + optionsFor(STATUS_LABELS, App.taskFilters.status, 'Todos los estados') + '</select>' +
+      '<select onchange="setTaskFilter(\'priority\', this.value)">' +
+      optionsFor({ P1: 'P1', P2: 'P2', P3: 'P3' }, App.taskFilters.priority, 'Toda prioridad') +
+      '</select>' +
+      '<label style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:12px;">' +
+      '<input type="checkbox" style="width:auto" ' + (App.taskFilters.mineOnly ? 'checked' : '') + ' onchange="setTaskFilter(\'mineOnly\', this.checked)" /> Solo mías' +
+      '</label>' +
+      '<input type="search" placeholder="Buscar por título… (Enter)" value="' + escapeHtml(App.taskFilters.search) + '" onchange="setTaskFilter(\'search\', this.value)" />' +
+      '<div class="spacer"></div>' +
+      (canBulk ? '<button onclick="openBulkReassignModal()">Reasignar en bloque</button>' : '') +
+      '<button class="primary" onclick="openNewTaskModal()">+ Nueva Task</button>' +
+      '</div>' +
+      (tasks.length
+        ? '<table class="tasks-table"><thead><tr><th>Título</th><th>Tipo</th><th>Owner</th><th>Prioridad</th><th>Estado</th><th>Vence</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<div class="empty-state">No hay Tasks que coincidan con el filtro.</div>')
+    );
+  }
+
+  function optionsFor(labelMap, selected, blankLabel) {
+    var html = '<option value=""' + (selected ? '' : ' selected') + '>' + blankLabel + '</option>';
+    Object.keys(labelMap).forEach(function (key) {
+      html += '<option value="' + key + '"' + (selected === key ? ' selected' : '') + '>' + labelMap[key] + '</option>';
+    });
+    return html;
+  }
+
+  function setTaskFilter(key, value) {
+    App.taskFilters[key] = value;
+    render();
+  }
+
+  function taskRowHtml(t) {
+    return (
+      '<tr onclick="navigate(\'task-detail\', {taskId: \'' + t['Task ID'] + '\'})">' +
+      '<td>' + escapeHtml(t['Task Title']) + '</td>' +
+      '<td>' + escapeHtml(t.Type) + '</td>' +
+      '<td>' + escapeHtml(t.Owner) + '</td>' +
+      '<td><span class="badge priority-' + t.Priority + '">' + t.Priority + '</span></td>' +
+      '<td><span class="badge status-' + t.Status + '">' + (STATUS_LABELS[t.Status] || t.Status) + '</span></td>' +
+      '<td>' + formatDate(t['Due Date']) + '</td>' +
+      '</tr>'
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Task Detail
+  // ---------------------------------------------------------------------
+  async function renderTaskDetailHtml(taskId) {
+    var detail = await Api.getTaskDetail(App.token, taskId);
+    App.currentDetail = detail;
+    var t = detail.task;
+    var a = detail.availableActions;
+
+    var actionButtons = [];
+    if (a.OPEN) actionButtons.push('<button class="primary" onclick="runTransition(\'' + taskId + '\',\'OPEN\')">Abrir</button>');
+    if (a.RESUME) actionButtons.push('<button class="primary" onclick="runTransition(\'' + taskId + '\',\'RESUME\')">Reanudar</button>');
+    if (a.COMPLETE) actionButtons.push('<button class="primary" onclick="openCommentModal(\'' + taskId + '\',\'COMPLETE\',\'Completar Task\')">Completar</button>');
+    if (a.SNOOZE) actionButtons.push('<button onclick="openSnoozeModal(\'' + taskId + '\')">Posponer</button>');
+    if (a.REOPEN) actionButtons.push('<button onclick="openCommentModal(\'' + taskId + '\',\'REOPEN\',\'Reabrir Task\')">Reabrir</button>');
+    if (a.TAKE_OWNERSHIP) actionButtons.push('<button onclick="openTakeOwnershipModal(\'' + taskId + '\')">Tomar Ownership</button>');
+    if (a.REASSIGN) actionButtons.push('<button onclick="openReassignModal(\'' + taskId + '\')">Reasignar</button>');
+    if (a.CANCEL) actionButtons.push('<button class="danger" onclick="openCommentModal(\'' + taskId + '\',\'CANCEL\',\'Cancelar Task\')">Cancelar</button>');
+    if (a.REQUEST_ADJUSTMENT) actionButtons.push('<button onclick="openRequestAdjustmentModal(\'' + taskId + '\')">Pedir Ajuste</button>');
+
+    return (
+      '<button class="link" onclick="navigate(\'tasks\')">&larr; Volver a Tasks</button>' +
+      '<h2 class="view-title" style="margin-top:8px;">' + escapeHtml(t['Task Title']) + '</h2>' +
+      '<p class="view-subtitle">' + escapeHtml(t['Task ID']) + ' · ' + escapeHtml(t.Type) +
+      ' · <span class="badge status-' + t.Status + '">' + (STATUS_LABELS[t.Status] || t.Status) + '</span></p>' +
+      '<div class="action-bar">' + actionButtons.join('') + '</div>' +
+      '<div class="detail-layout">' +
+      '<div class="detail-main">' +
+      sectionOverview(t) +
+      sectionAdjustments(detail.pendingAdjustments, taskId, a) +
+      sectionComments(detail.history, taskId, a) +
+      sectionHistory(detail.history) +
+      '</div>' +
+      '<div class="detail-side">' +
+      sectionSubtasks(detail.subtasks, taskId, a) +
+      sectionParticipants(detail.participants, taskId, a) +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  function sectionOverview(t) {
+    return (
+      '<div class="panel"><h3>Detalle</h3>' +
+      metaRow('Descripción', t.Description || '—') +
+      metaRow('Owner', t.Owner) +
+      metaRow('Departamento', t.Department) +
+      metaRow('Prioridad', t.Priority) +
+      metaRow('Visibility', t.Visibility) +
+      metaRow('Operational Scope', t['Operational Scope']) +
+      metaRow('Due Date', formatDate(t['Due Date'])) +
+      (t['Review Date'] ? metaRow('Review Date', formatDate(t['Review Date'])) : '') +
+      metaRow('Creada por', t['Created By'] + ' — ' + formatDateTime(t['Created At'])) +
+      metaRow('System Origin', t['System Origin']) +
+      '</div>'
+    );
+  }
+
+  function metaRow(k, v) {
+    return '<div class="meta-row"><span class="k">' + escapeHtml(k) + '</span><span>' + escapeHtml(v) + '</span></div>';
+  }
+
+  function sectionComments(history, taskId, actions) {
+    var comments = history.filter(function (h) {
+      return h['Event Type'] === 'COMMENT_ADDED';
+    });
+    var items = comments
+      .map(function (c) {
+        return (
+          '<div class="comment-item"><div>' + escapeHtml(c.Comment) + '</div>' +
+          '<div class="meta">' + escapeHtml(c['Performed By']) + ' · ' + formatDateTime(c['Created At']) + '</div></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><h3>Comentarios</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin comentarios todavía.</p>') +
+      (actions.ADD_COMMENT
+        ? '<div class="inline-form"><input id="new-comment-input" placeholder="Escribe un comentario…" />' +
+          '<button class="primary" onclick="submitComment(\'' + taskId + '\')">Enviar</button></div>'
+        : '') +
+      '</div>'
+    );
+  }
+
+  function sectionHistory(history) {
+    var items = history
+      .slice()
+      .reverse()
+      .map(function (h) {
+        return (
+          '<div class="history-item">' + (EVENT_LABELS[h['Event Type']] || h['Event Type']) +
+          '<div class="meta">' + escapeHtml(h['Performed By']) + ' · ' + formatDateTime(h['Created At']) + '</div></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><details class="collapsible"><summary>Historial completo (' + history.length + ')</summary>' + items + '</details></div>'
+    );
+  }
+
+  function sectionSubtasks(subtasks, taskId, actions) {
+    var items = subtasks
+      .map(function (s) {
+        var done = s.Status === 'COMPLETED';
+        return (
+          '<div class="list-item">' +
+          '<label style="display:flex;gap:8px;align-items:center;">' +
+          '<input type="checkbox" style="width:auto" ' + (done ? 'checked disabled' : '') +
+          (!done ? ' onchange="completeSubtask(\'' + s['Subtask ID'] + '\')"' : '') + ' />' +
+          '<span style="' + (done ? 'text-decoration:line-through;color:var(--color-text-muted);' : '') + '">' + escapeHtml(s.Title) + '</span>' +
+          '</label></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><h3>Subtareas</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin subtareas.</p>') +
+      (actions.CREATE_SUBTASK
+        ? '<div class="inline-form"><input id="new-subtask-input" placeholder="Nueva subtarea…" />' +
+          '<button onclick="submitSubtask(\'' + taskId + '\')">Agregar</button></div>'
+        : '') +
+      '</div>'
+    );
+  }
+
+  function sectionParticipants(participants, taskId, actions) {
+    var items = participants
+      .map(function (p) {
+        return (
+          '<div class="list-item" style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>' + escapeHtml(p['User ID']) + ' <span class="view-subtitle" style="margin:0;display:inline;">(' + escapeHtml(p['Role in Task']) + ')</span></span>' +
+          (actions.REMOVE_PARTICIPANT
+            ? '<button class="link" onclick="submitRemoveParticipant(\'' + taskId + '\',\'' + p['User ID'] + '\')">Quitar</button>'
+            : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><h3>Participantes</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin participantes.</p>') +
+      (actions.ADD_PARTICIPANT
+        ? '<div class="inline-form"><input id="new-participant-input" placeholder="User ID (ej. U006)" />' +
+          '<button onclick="submitAddParticipant(\'' + taskId + '\')">Agregar</button></div>'
+        : '') +
+      '</div>'
+    );
+  }
+
+  function sectionAdjustments(pendingAdjustments, taskId, actions) {
+    if (!pendingAdjustments.length) return '';
+    var items = pendingAdjustments
+      .map(function (adj) {
+        var canResolve = actions.APPROVE_ADJUSTMENT;
+        return (
+          '<div class="list-item">' +
+          '<div><strong>' + escapeHtml(adj.Type) + '</strong> — solicitado por ' + escapeHtml(adj['Requested By ID']) + '</div>' +
+          '<div class="meta">' + escapeHtml(adj.Reason || '') + '</div>' +
+          (canResolve
+            ? '<div style="margin-top:6px;display:flex;gap:8px;">' +
+              '<button class="primary" onclick="openResolveAdjustmentModal(\'' + adj['Adjustment ID'] + '\',\'APPROVED\')">Aprobar</button>' +
+              '<button class="danger" onclick="openResolveAdjustmentModal(\'' + adj['Adjustment ID'] + '\',\'REJECTED\')">Rechazar</button>' +
+              '</div>'
+            : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    return '<div class="panel"><h3>Ajustes pendientes</h3>' + items + '</div>';
+  }
+</script>
