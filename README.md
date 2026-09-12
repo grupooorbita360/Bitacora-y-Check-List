@@ -27,18 +27,22 @@ real (Sheet personal + Apps Script). El detalle vive en [`docs/`](docs/):
 | [`docs/05-roadmap.md`](docs/05-roadmap.md) | Fases 1–7 y estado de cada una |
 | [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Cómo se resolvió Task_Permissions/Task_Assignment_Config/Task_History con los datos reales |
 | [`docs/07-fase-4-decisiones.md`](docs/07-fase-4-decisiones.md) | Qué se construyó del frontend, qué queda fuera (Checklist UI) y cómo se probó en navegador real |
+| [`docs/08-fase-4-hardening.md`](docs/08-fase-4-hardening.md) | IDs atómicos, auto-refresco, specs de Playwright guardadas como tests reales |
 
 Fase 4 (Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task
 detail, Modals) ya tiene código: ver [`apps-script/html/`](apps-script/html/)
 y `apps-script/src/98_Api.js`/`99_WebApp.js`. Es una SPA servida por Apps
 Script HTML Service, desktop-first, con progressive disclosure real (el
-backend decide qué botones/acciones mostrar según permisos). Se probó de
-punta a punta en Chromium real contra el backend real (no mocks visuales)
-usando un dev server local — `cd apps-script && npm run dev` y abrir
-`http://localhost:8080` — ver `docs/07-fase-4-decisiones.md` para el
-detalle de qué se verificó (lifecycle completo, flujo de Adjustment con
-Agent bloqueado + Supervisor aprobando, subtasks, participants, bulk
-reassign, los 3 modos de Auth).
+backend decide qué botones/acciones mostrar según permisos), con
+generación de IDs atómica (`LockService` + Script Properties, sin
+colisiones entre usuarios concurrentes) y auto-refresco cada 20s en
+Dashboard/Tasks/Task Detail (pausado si la pestaña no está visible). Las
+pruebas que antes eran scripts manuales ahora son specs reales de
+Playwright en el repo (`apps-script/e2e/`, `npm run test:e2e`) — cubren
+login, lifecycle completo, el flujo de Adjustment (Agent bloqueado +
+Supervisor aprobando/rechazando) y el auto-refresco en vivo. También se
+puede levantar `cd apps-script && npm run dev` y abrir
+`http://localhost:8080` para probarlo a mano.
 
 **Aún no se ha instalado en el Sheet/Apps Script real.** El siguiente paso
 es copiar `apps-script/src/*.js` + `apps-script/html/*.html` al proyecto

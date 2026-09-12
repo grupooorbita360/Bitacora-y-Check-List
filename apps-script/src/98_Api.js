@@ -89,9 +89,11 @@ function api_getDashboard(token) {
 
 // --- Tasks ---------------------------------------------------------------
 
-function api_listTasks(token, filters) {
+// Compartido por api_listTasks y api_getTasksVersion — la lista completa y
+// su "versión" liviana deben coincidir en qué Tasks cuentan, o el polling
+// podría no detectar que la lista visible cambió.
+function _visibleTasksForUser(userId, filters) {
   filters = filters || {};
-  var userId = _resolveActingUserId(token);
   var tasks = new TasksRepository().findAll().filter(function (t) {
     return t.Active !== false;
   });
@@ -119,10 +121,30 @@ function api_listTasks(token, filters) {
       return String(t['Task Title']).toLowerCase().indexOf(q) !== -1;
     });
   }
+  return visible;
+}
+
+function api_listTasks(token, filters) {
+  var userId = _resolveActingUserId(token);
+  var visible = _visibleTasksForUser(userId, filters);
   visible.sort(function (a, b) {
     return new Date(b['Created At']) - new Date(a['Created At']);
   });
   return _toPlain(visible);
+}
+
+// Endpoint liviano para polling (cada 20s desde Client_Views.html): solo
+// cuenta y calcula el Updated At más reciente entre las Tasks visibles con
+// estos filtros, sin traer cada Task completa. El cliente solo vuelve a
+// pedir la lista si esto cambió respecto a lo que ya tiene pintado.
+function api_getTasksVersion(token, filters) {
+  var userId = _resolveActingUserId(token);
+  var visible = _visibleTasksForUser(userId, filters);
+  var latestUpdatedAt = visible.reduce(function (max, t) {
+    var updated = t['Updated At'] ? new Date(t['Updated At']).getTime() : 0;
+    return updated > max ? updated : max;
+  }, 0);
+  return { count: visible.length, latestUpdatedAt: latestUpdatedAt };
 }
 
 function api_createTask(token, input) {
@@ -162,6 +184,26 @@ function api_getTaskDetail(token, taskId) {
     pendingAdjustments: new TaskAdjustmentsRepository().findPendingByTask(taskId),
     availableActions: _computeAvailableActions(userId, task)
   });
+}
+
+// Endpoint liviano para polling del Task Detail (cada 20s): un puñado de
+// números en vez de repetir todo lo que arma api_getTaskDetail (history,
+// subtasks, participants, adjustments, availableActions). El cliente solo
+// vuelve a pedir el detalle completo si esto cambió — ver
+// computeTaskVersionFromDetail() en Client_Views.html, que calcula lo
+// mismo a partir del detalle ya cargado para tener la línea base sin un
+// viaje de red extra.
+function api_getTaskVersion(token, taskId) {
+  var userId = _resolveActingUserId(token);
+  var task = new TasksRepository().findById(taskId);
+  if (!task || !TaskPermissionService.canView(userId, task)) return null;
+  return {
+    updatedAt: task['Updated At'] ? new Date(task['Updated At']).getTime() : 0,
+    historyCount: new TaskHistoryRepository().findByTask(taskId).length,
+    subtasksCount: new TaskSubtasksRepository().findByTask(taskId).length,
+    participantsCount: new TaskParticipantsRepository().findByTask(taskId).length,
+    pendingAdjustmentsCount: new TaskAdjustmentsRepository().findPendingByTask(taskId).length
+  };
 }
 
 // El servidor decide qué botones tienen sentido mostrar (progressive

@@ -3,6 +3,7 @@
   // Dispatcher principal: decide login vs. shell+contenido según la ruta.
   // ---------------------------------------------------------------------
   async function render() {
+    stopPolling();
     var app = document.getElementById('app');
     if (!App.user) {
       app.innerHTML = renderLoginHtml();
@@ -14,10 +15,15 @@
     try {
       if (App.route.name === 'dashboard') {
         content.innerHTML = await renderDashboardHtml();
+        schedulePolling(pollDashboard);
       } else if (App.route.name === 'tasks') {
         content.innerHTML = await renderTasksHtml();
+        schedulePolling(pollTasksList);
       } else if (App.route.name === 'task-detail') {
         content.innerHTML = await renderTaskDetailHtml(App.route.taskId);
+        schedulePolling(function () {
+          return pollTaskDetail(App.route.taskId);
+        });
       }
     } catch (e) {
       content.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>';
@@ -100,8 +106,7 @@
   // ---------------------------------------------------------------------
   // Dashboard
   // ---------------------------------------------------------------------
-  async function renderDashboardHtml() {
-    var stats = await Api.getDashboard(App.token);
+  function dashboardBodyHtml(stats) {
     return (
       '<h2 class="view-title">Dashboard</h2>' +
       '<p class="view-subtitle">Resumen de tus Tasks</p>' +
@@ -113,6 +118,23 @@
       '</div>' +
       '<button class="primary" onclick="navigate(\'tasks\')">Ver Tasks</button>'
     );
+  }
+
+  async function renderDashboardHtml() {
+    var stats = await Api.getDashboard(App.token);
+    return dashboardBodyHtml(stats);
+  }
+
+  // getDashboard ya es liviano (solo cuenta Tasks visibles por estado), así
+  // que el polling del Dashboard lo llama directo cada 20s — a diferencia
+  // de Tasks/Task Detail no hace falta un chequeo de versión aparte.
+  async function pollDashboard() {
+    try {
+      var stats = await Api.getDashboard(App.token);
+      document.getElementById('content').innerHTML = dashboardBodyHtml(stats);
+    } catch (e) {
+      // silencioso: un refresco en segundo plano no debe interrumpir al usuario.
+    }
   }
 
   function statCard(value, label, overdue) {
@@ -129,9 +151,7 @@
   // ---------------------------------------------------------------------
   App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, search: '' };
 
-  async function renderTasksHtml() {
-    var tasks = await Api.listTasks(App.token, App.taskFilters);
-    var canBulk = await Api.canBulkReassign(App.token);
+  function tasksBodyHtml(tasks, canBulk) {
     var rows = tasks.map(taskRowHtml).join('');
     return (
       '<h2 class="view-title">Tasks</h2>' +
@@ -153,6 +173,38 @@
         ? '<table class="tasks-table"><thead><tr><th>Título</th><th>Tipo</th><th>Owner</th><th>Prioridad</th><th>Estado</th><th>Vence</th></tr></thead><tbody>' + rows + '</tbody></table>'
         : '<div class="empty-state">No hay Tasks que coincidan con el filtro.</div>')
     );
+  }
+
+  function computeTasksVersionFromList(tasks) {
+    var latest = 0;
+    tasks.forEach(function (t) {
+      var updated = t['Updated At'] ? new Date(t['Updated At']).getTime() : 0;
+      if (updated > latest) latest = updated;
+    });
+    return { count: tasks.length, latestUpdatedAt: latest };
+  }
+
+  async function renderTasksHtml() {
+    var tasks = await Api.listTasks(App.token, App.taskFilters);
+    var canBulk = await Api.canBulkReassign(App.token);
+    App._tasksVersion = computeTasksVersionFromList(tasks);
+    App._tasksCanBulk = canBulk;
+    return tasksBodyHtml(tasks, canBulk);
+  }
+
+  // Endpoint liviano (solo count + Updated At más reciente): si no cambió
+  // nada, no vuelve a pedir la lista completa ni a re-renderizar la tabla
+  // (evita perder el estado de scroll/foco sin necesidad).
+  async function pollTasksList() {
+    try {
+      var version = await Api.getTasksVersion(App.token, App.taskFilters);
+      if (versionsEqual(version, App._tasksVersion)) return;
+      var tasks = await Api.listTasks(App.token, App.taskFilters);
+      App._tasksVersion = computeTasksVersionFromList(tasks);
+      document.getElementById('content').innerHTML = tasksBodyHtml(tasks, App._tasksCanBulk);
+    } catch (e) {
+      // silencioso
+    }
   }
 
   function optionsFor(labelMap, selected, blankLabel) {
@@ -184,9 +236,7 @@
   // ---------------------------------------------------------------------
   // Task Detail
   // ---------------------------------------------------------------------
-  async function renderTaskDetailHtml(taskId) {
-    var detail = await Api.getTaskDetail(App.token, taskId);
-    App.currentDetail = detail;
+  function taskDetailBodyHtml(detail, taskId) {
     var t = detail.task;
     var a = detail.availableActions;
 
@@ -220,6 +270,39 @@
       '</div>' +
       '</div>'
     );
+  }
+
+  function computeTaskVersionFromDetail(detail) {
+    return {
+      updatedAt: detail.task['Updated At'] ? new Date(detail.task['Updated At']).getTime() : 0,
+      historyCount: detail.history.length,
+      subtasksCount: detail.subtasks.length,
+      participantsCount: detail.participants.length,
+      pendingAdjustmentsCount: detail.pendingAdjustments.length
+    };
+  }
+
+  async function renderTaskDetailHtml(taskId) {
+    var detail = await Api.getTaskDetail(App.token, taskId);
+    App.currentDetail = detail;
+    App._taskDetailVersion = computeTaskVersionFromDetail(detail);
+    return taskDetailBodyHtml(detail, taskId);
+  }
+
+  // Endpoint liviano (Updated At + 4 conteos): solo si algo de eso cambió
+  // se vuelve a pedir el detalle completo (history/subtasks/participants/
+  // adjustments/availableActions) y se re-renderiza.
+  async function pollTaskDetail(taskId) {
+    try {
+      var version = await Api.getTaskVersion(App.token, taskId);
+      if (!version || versionsEqual(version, App._taskDetailVersion)) return;
+      var detail = await Api.getTaskDetail(App.token, taskId);
+      App.currentDetail = detail;
+      App._taskDetailVersion = computeTaskVersionFromDetail(detail);
+      document.getElementById('content').innerHTML = taskDetailBodyHtml(detail, taskId);
+    } catch (e) {
+      // silencioso
+    }
   }
 
   function sectionOverview(t) {

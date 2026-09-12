@@ -52,6 +52,9 @@
     listTasks: function (token, filters) {
       return callServer('api_listTasks', token, filters);
     },
+    getTasksVersion: function (token, filters) {
+      return callServer('api_getTasksVersion', token, filters);
+    },
     createTask: function (token, input) {
       return callServer('api_createTask', token, input);
     },
@@ -66,6 +69,9 @@
     },
     getTaskDetail: function (token, taskId) {
       return callServer('api_getTaskDetail', token, taskId);
+    },
+    getTaskVersion: function (token, taskId) {
+      return callServer('api_getTaskVersion', token, taskId);
     },
     transitionTask: function (token, taskId, action, opts) {
       return callServer('api_transitionTask', token, taskId, action, opts);

@@ -45,3 +45,64 @@ test('UsersRepository.findByEmail distingue email único vs. compartido', () => 
   assert.equal(users.findByEmail('executiveservices.team@example.test').length, 7);
   assert.equal(users.findByEmail('nadie@example.test').length, 0);
 });
+
+test('nextSequentialId: consecutivo por prefijo vía Script Properties, no cuenta filas del Sheet', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+
+  assert.equal(repo.nextSequentialId('T', 5), 'T00001');
+  assert.equal(repo.nextSequentialId('T', 5), 'T00002');
+  assert.equal(repo.nextSequentialId('T', 5), 'T00003');
+
+  // Prefijo distinto = contador independiente, sin importar cuántas Tasks
+  // se hayan generado ya (a diferencia de contar filas del Sheet, que
+  // mezclaba el conteo de una tabla con el ID de otra si compartieran
+  // instancia de repositorio).
+  assert.equal(repo.nextSequentialId('ADJ', 5), 'ADJ00001');
+  assert.equal(repo.nextSequentialId('T', 5), 'T00004');
+
+  // El contador vive en Script Properties (no en el Sheet): softDelete o
+  // filas existentes no lo alteran, y una instancia nueva del repositorio
+  // sigue la secuencia en vez de reiniciarla.
+  repo.softDelete('DEP001');
+  const otherRepoInstance = new ctx.DepartmentsRepository();
+  assert.equal(otherRepoInstance.nextSequentialId('T', 5), 'T00005');
+});
+
+test('nextSequentialId: usa LockService.getScriptLock() para el incremento atómico', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+
+  let waitLockCalls = 0;
+  let releaseLockCalls = 0;
+  const realGetScriptLock = ctx.LockService.getScriptLock;
+  ctx.LockService.getScriptLock = function () {
+    const lock = realGetScriptLock();
+    return {
+      waitLock: function (ms) {
+        waitLockCalls++;
+        return lock.waitLock(ms);
+      },
+      releaseLock: function () {
+        releaseLockCalls++;
+        return lock.releaseLock();
+      }
+    };
+  };
+
+  repo.nextSequentialId('T', 5);
+  assert.equal(waitLockCalls, 1);
+  assert.equal(releaseLockCalls, 1);
+
+  // El lock se libera incluso si algo falla en el medio (no debe quedar
+  // trabado para el siguiente request de otro usuario).
+  const realGetScriptProperties = ctx.PropertiesService.getScriptProperties;
+  ctx.PropertiesService.getScriptProperties = function () {
+    throw new Error('fallo simulado');
+  };
+  assert.throws(() => repo.nextSequentialId('T', 5), /fallo simulado/);
+  ctx.PropertiesService.getScriptProperties = realGetScriptProperties;
+  assert.equal(releaseLockCalls, 2, 'releaseLock debe llamarse aunque falle el incremento (finally)');
+});

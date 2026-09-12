@@ -141,4 +141,43 @@
   function showError(err) {
     toast(err && err.message ? err.message : String(err), 'error');
   }
+
+  // ---------------------------------------------------------------------
+  // Polling (Dashboard/Tasks/Task Detail se refrescan solos cada 20s,
+  // pausado mientras la pestaña no está visible). Solo una vista sondea a
+  // la vez — render() llama stopPolling() antes de decidir la ruta actual.
+  // ---------------------------------------------------------------------
+  var POLL_INTERVAL_MS = 20000;
+  App._stopPolling = null;
+
+  function startPolling(intervalMs, checkFn) {
+    function tick() {
+      if (document.visibilityState === 'visible') checkFn();
+    }
+    var timer = setInterval(tick, intervalMs);
+    // Al volver a la pestaña no esperamos hasta el próximo tick: se
+    // refresca de una vez si había cambios pendientes.
+    document.addEventListener('visibilitychange', tick);
+    return function stop() {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }
+
+  function stopPolling() {
+    if (App._stopPolling) {
+      App._stopPolling();
+      App._stopPolling = null;
+    }
+  }
+
+  function schedulePolling(checkFn) {
+    stopPolling();
+    App._stopPolling = startPolling(POLL_INTERVAL_MS, checkFn);
+  }
+
+  function versionsEqual(a, b) {
+    if (!a || !b) return false;
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
 </script>

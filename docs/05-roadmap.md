@@ -8,7 +8,7 @@ enfoque que HotelOS).
 | **1** | Arquitectura y limpieza de datos: tablas, relaciones, reglas, permisos, flujos, módulos; cerrar las decisiones del Anexo A | ✅ Completada — ver `03-anexo-a-auditoria.md` |
 | **2** | Backend foundation: Config, Auth, Users, Departments, Permissions, capa Repository/DAO | ✅ Instalada y validada por Eduardo en el Sheet personal real |
 | **3** | Tasks (CRUD, permisos, assignment, lifecycle, history, comments, participants, subtasks, adjustments, bulk reassignment) **+ Checklist** (`Checklist_Config`, `Checklist_Runs`, conversión a Task) | ✅ Instalada y validada por Eduardo en el ambiente real de Apps Script (lifecycle completo y flujo de Adjustment confirmados) |
-| **4** | Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task detail, Modals (Apps Script Web App, HTML Service, desktop-first) | ✅ Código entregado en `apps-script/html/` + `98_Api.js`/`99_WebApp.js`, probado en navegador real contra el backend real (dev server, ver `07-fase-4-decisiones.md`). Pendiente de instalar y validar en el Sheet real. |
+| **4** | Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task detail, Modals (Apps Script Web App, HTML Service, desktop-first) | ✅ Código entregado en `apps-script/html/` + `98_Api.js`/`99_WebApp.js`, con hardening previo a Fase 5 (IDs atómicos, auto-refresco, specs de Playwright guardadas en `apps-script/e2e/` — ver `08-fase-4-hardening.md`). Probado en navegador real contra el backend real. Pendiente de instalar y validar en el Sheet/Apps Script real. |
 | **5** | People | ⏳ Pendiente |
 | **6** | Integrations: Bitácora, y otras fuentes internas (`Leads` queda explícitamente fuera de alcance — ver `01-modelo-datos.md`) | ⏳ Pendiente |
 | **7** | Reports / Notifications / Agenda | ⏳ Pendiente |

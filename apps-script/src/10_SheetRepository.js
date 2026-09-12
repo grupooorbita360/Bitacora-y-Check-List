@@ -96,15 +96,29 @@ var SheetRepository = class {
     return this.update(id, { Activo: false });
   }
 
-  // Genera IDs legibles tipo PREFIJO+consecutivo (ej. T00001). Asume que
-  // los registros nunca se borran físicamente, solo con softDelete — si
-  // eso cambiara, este esquema tendría que revisarse.
+  // Genera IDs legibles tipo PREFIJO+consecutivo (ej. T00001, ADJ00001).
+  // El consecutivo vive en Script Properties (una key por prefijo,
+  // compartida por todos los usuarios del Web App) e incrementa dentro de
+  // LockService.getScriptLock() para que dos usuarios creando una Task al
+  // mismo tiempo nunca reciban el mismo ID — contar filas del Sheet
+  // (la implementación anterior) no es atómico entre requests concurrentes.
   nextSequentialId(prefix, padLength) {
-    var count = this.findAll().length;
-    var padded = String(count + 1);
-    while (padded.length < (padLength || 4)) {
-      padded = '0' + padded;
+    var lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+    try {
+      var props = PropertiesService.getScriptProperties();
+      var key = 'SEQ_' + prefix;
+      var next = (parseInt(props.getProperty(key), 10) || 0) + 1;
+      props.setProperty(key, String(next));
+
+      var padded = String(next);
+      var targetLength = padLength || 4;
+      while (padded.length < targetLength) {
+        padded = '0' + padded;
+      }
+      return prefix + padded;
+    } finally {
+      lock.releaseLock();
     }
-    return prefix + padded;
   }
 }

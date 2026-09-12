@@ -4,6 +4,10 @@
   "description": "Backend + frontend (Apps Script HTML Service) de la Plataforma Operativa. Ver docs/04-protocolo-despliegue.md.",
   "scripts": {
     "test": "node --test test/*.test.js",
+    "test:e2e": "node --test e2e/*.e2e.test.js",
     "dev": "node devserver/server.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
   }
 }

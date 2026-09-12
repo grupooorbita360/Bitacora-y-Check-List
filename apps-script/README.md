@@ -53,7 +53,10 @@ test/
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
   *.test.js                  Tests (node:test): repository, auth, permission, taskLifecycle, checklist.
 devserver/
-  server.js                  Servidor Node local para probar html/ en un navegador real — ver abajo.
+  server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
+e2e/
+  helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
+  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh.
 ```
 
 Los archivos de `src/` llevan prefijo numérico porque Apps Script no tiene
@@ -70,9 +73,27 @@ npm test
 ```
 
 No requiere ningún Sheet real ni credenciales: `test/mocks/gasGlobals.js`
-simula `SpreadsheetApp`, `PropertiesService`, `Utilities` y `Session` en
-memoria con Node puro (usa `node:crypto` para el hash SHA-256 y HMAC, sin
-dependencias externas).
+simula `SpreadsheetApp`, `PropertiesService`, `Utilities`, `Session` y
+`LockService` en memoria con Node puro (usa `node:crypto` para el hash
+SHA-256 y HMAC, sin dependencias externas).
+
+## Correr los specs de Playwright (e2e, navegador real)
+
+```
+cd apps-script
+npm install       # primera vez, trae `playwright` (Chromium ya viene preinstalado en este entorno)
+npm run test:e2e
+```
+
+Cada spec levanta su propio dev server aislado (`e2e/helpers.js` →
+`createDevServer({ port: 0 })`) con Chromium real, sin depender de un
+despliegue a Apps Script. Cubren login (DIRECT/SELECT_PIN/DENIED, PIN
+incorrecto), el ciclo de vida de Tasks (crear+asignar+abrir+comentar,
+subtareas, participantes, snooze, bulk reassign), el flujo completo de
+Adjustment (Agent bloqueado → Supervisor aprueba/rechaza) y el
+auto-refresco de Dashboard/Tasks/Task Detail (usando `page.clock` para
+adelantar el reloj virtual en vez de esperar 20s reales por test). Ver
+`docs/08-fase-4-hardening.md`.
 
 ## Probar el frontend en un navegador real (sin Apps Script)
 
@@ -167,4 +188,17 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
   `api_listChecklist`/`api_recordChecklistRun`/
   `api_convertChecklistRunToTask`) — no estaba en la lista de vistas
   pedida para Fase 4, ver `docs/07-fase-4-decisiones.md`.
+- Limitación conocida y aceptada del auto-refresco: un poll puede
+  reemplazar un input a medio escribir (buscador, comentario sin enviar)
+  si justo en ese momento hay un cambio que refrescar — ver
+  `docs/08-fase-4-hardening.md`.
 - People — Fase 5.
+
+## Hardening previo a Fase 5
+
+IDs atómicos (`nextSequentialId` vía Script Properties + `LockService`,
+ya no cuenta filas), auto-refresco cada 20s en Dashboard/Tasks/Task Detail
+(pausado si la pestaña no está visible, con endpoints livianos de
+"versión" para no releer todo el detalle sin cambios) y los specs de
+Playwright guardados como tests reales (`e2e/`) — todo documentado en
+`docs/08-fase-4-hardening.md`.

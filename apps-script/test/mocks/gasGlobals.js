@@ -104,6 +104,7 @@ function createGasMocks() {
   const spreadsheet = new MockSpreadsheet();
   const scriptProperties = new Map();
   let activeUserEmail = '';
+  let scriptLockHeld = false;
 
   const PropertiesService = {
     getScriptProperties: function () {
@@ -172,11 +173,33 @@ function createGasMocks() {
     }
   };
 
+  // Node es de un solo hilo y nuestro código nunca hace await entre
+  // waitLock/releaseLock, así que no hay reentrancia real que simular —
+  // esto solo replica la forma de la API real (LockService.getScriptLock()
+  // .waitLock(ms)/.releaseLock()) para que 10_SheetRepository.js corra sin
+  // cambios contra el mock y contra Apps Script real.
+  const LockService = {
+    getScriptLock: function () {
+      return {
+        waitLock: function () {
+          if (scriptLockHeld) {
+            throw new Error('No se pudo obtener el lock (ya está en uso).');
+          }
+          scriptLockHeld = true;
+        },
+        releaseLock: function () {
+          scriptLockHeld = false;
+        }
+      };
+    }
+  };
+
   return {
     PropertiesService,
     SpreadsheetApp,
     Utilities,
     Session,
+    LockService,
     // Helper de test, no existe en Apps Script real.
     __setActiveUserEmail: function (email) {
       activeUserEmail = email;
