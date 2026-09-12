@@ -1,94 +1,107 @@
 /**
- * TaskPermissionService — motor de permisos de Tasks para Fase 3.
+ * TaskPermissionService — motor de permisos de Tasks, ahora sobre datos
+ * reales de Task_Permissions (TP001-TP087, ver docs/06-fase-3-decisiones.md).
  *
- * IMPORTANTE (ver docs/06-fase-3-decisiones.md): esta lógica es una
- * reconstrucción a partir de la jerarquía Director→Manager→Supervisor→
- * Agent, el modelo Owner/Visibility/Operational Scope (secciones 9-10) y
- * el flujo de Task_Adjustments — NO es una transcripción de las 87 filas
- * reales de Task_Permissions ni de las 19 de Task_Assignment_Config, cuyo
- * contenido literal no estaba disponible en esta sesión. Task_Permissions/
- * Task_Assignment_Config ya existen correctas en el Sheet real (confirmado
- * en la auditoría de Fase 1); si al instalar Fase 3 se detectan reglas más
- * finas que esta lógica no cubre, este es el único archivo a ajustar.
+ * Regla de resolución por acción:
+ *  1. Si la acción NO tiene ninguna fila en Task_Permissions (OPEN, RESUME,
+ *     COMPLETE_SUBTASK — no están modeladas ahí), se usa la lógica derivada
+ *     de respaldo (_fallbackCan), igual que antes de tener los datos reales.
+ *  2. Si la acción SÍ está modelada, se resuelve EXCLUSIVAMENTE con las
+ *     filas reales: se toman los roles del usuario, se juntan los Alcance
+ *     permitidos para (rol, acción), y se evalúa cada Alcance contra la
+ *     Task. Si el usuario tiene un rol sin fila para esa acción (ej. Agent
+ *     + REASSIGN), es una negación real de los datos, no un fallback.
+ *
+ * Alcance se evalúa así (ver docs/06-fase-3-decisiones.md para el porqué):
+ *   ALL              -> siempre true
+ *   DEPARTMENT       -> mismo Department ID que la Task
+ *   CROSS_DEPARTMENT -> departamento distinto (sin tabla de Delegations
+ *                       todavía, se resuelve como "cualquier otro depto")
+ *   OWN              -> el usuario es el Owner de la Task
+ *   PARTICIPANT      -> el usuario es Participant de la Task
+ *   SHARED           -> Tasks['Operational Scope'] === 'SHARED' (así,
+ *                       Take Ownership con Alcance=SHARED no necesita que el
+ *                       usuario ya sea Participant, igual que en el caso
+ *                       "Task Shared" de la sección 10).
  */
 var TaskPermissionService = {
   canView: function (userId, task) {
-    if (PermissionService.isAdmin(userId)) return true;
-    if (String(task['Owner ID']) === String(userId)) return true;
-    if (this._isParticipant(userId, task['Task ID'])) return true;
-
-    var user = new UsersRepository().findById(userId);
-    if (!user) return false;
-    var roles = PermissionService.getRoles(userId);
-    var sameDepartment = String(user['Department ID']) === String(task.Department);
-
-    switch (task.Visibility) {
-      case Config.TASK_VISIBILITY.OPERATIONAL:
-        return sameDepartment && this._supervises(userId, task['Owner ID']);
-      case Config.TASK_VISIBILITY.SUPERVISION:
-        return sameDepartment && this._isSupervisorOrAbove(roles);
-      case Config.TASK_VISIBILITY.MANAGEMENT:
-        return this._isManagerOrAbove(roles);
-      case Config.TASK_VISIBILITY.RESTRICTED:
-        return false;
-      default:
-        return false;
-    }
+    return this.can(userId, Config.TASK_ACTIONS.VIEW, task);
   },
 
   can: function (userId, action, task) {
     if (PermissionService.isAdmin(userId)) return true;
 
-    var isOwner = String(task['Owner ID']) === String(userId);
-    var isSupervisorOfOwner = this._supervises(userId, task['Owner ID']);
-    var isRealSupervisorOfOwner = this._isRealSupervisorOf(userId, task['Owner ID']);
-    var isManagerOfDepartment = this._managesDepartment(userId, task.Department);
-    var A = Config.TASK_ACTIONS;
+    var permissions = new TaskPermissionsRepository();
+    if (!permissions.actionExists(action)) {
+      return this._fallbackCan(userId, action, task);
+    }
 
-    switch (action) {
-      case A.VIEW:
-        return this.canView(userId, task);
+    var roles = PermissionService.getRoles(userId);
+    var self = this;
+    var scopes = [];
+    roles.forEach(function (role) {
+      scopes = scopes.concat(permissions.findScopesFor(role, action));
+    });
+    if (!scopes.length) return false;
 
-      case A.OPEN:
-      case A.COMPLETE:
-      case A.SNOOZE:
-      case A.RESUME:
-      case A.CANCEL:
-      case A.REOPEN:
-      case A.ADD_SUBTASK:
-      case A.COMPLETE_SUBTASK:
-        return isOwner || isSupervisorOfOwner || isManagerOfDepartment;
+    return scopes.some(function (scope) {
+      return self._evaluateScope(scope, userId, task);
+    });
+  },
 
-      case A.ADD_COMMENT:
-        return isOwner || this._isParticipant(userId, task['Task ID']) || isSupervisorOfOwner || isManagerOfDepartment;
+  // Capacidad general de usar bulk reassign (sin Task concreta todavía).
+  canBulkReassign: function (userId) {
+    if (PermissionService.isAdmin(userId)) return true;
+    var action = Config.TASK_ACTIONS.BULK_REASSIGN;
+    var permissions = new TaskPermissionsRepository();
+    var roles = PermissionService.getRoles(userId);
+    if (!permissions.actionExists(action)) {
+      return this._isManagerOrAbove(roles);
+    }
+    return roles.some(function (role) {
+      return permissions.findScopesFor(role, action).length > 0;
+    });
+  },
 
-      case A.TAKE_OWNERSHIP:
-      case A.REASSIGN:
-        // El Agent nunca reasigna directo (ni a sí mismo): debe pasar por
-        // TaskService.requestAdjustment() para que lo apruebe su
-        // Supervisor/Manager. Por eso aquí NO se usa isSupervisorOfOwner
-        // (que trata al propio Owner como "supervisor de sí mismo" para
-        // las acciones normales de lifecycle) sino un chequeo que exige un
-        // Supervisor/Manager real, distinto del Owner.
-        return isRealSupervisorOfOwner || isManagerOfDepartment;
+  _evaluateScope: function (scope, userId, task) {
+    var user = new UsersRepository().findById(userId);
+    if (!user) return false;
 
-      case A.ADD_PARTICIPANT:
-      case A.REMOVE_PARTICIPANT:
-        return isOwner || isSupervisorOfOwner || isManagerOfDepartment;
-
-      case A.APPROVE_ADJUSTMENT:
-      case A.REJECT_ADJUSTMENT:
-        return isRealSupervisorOfOwner || isManagerOfDepartment;
-
+    switch (scope) {
+      case 'ALL':
+        return true;
+      case Config.TASK_SCOPE.DEPARTMENT:
+        return String(user['Department ID']) === String(task.Department);
+      case Config.TASK_SCOPE.CROSS_DEPARTMENT:
+        return String(user['Department ID']) !== String(task.Department);
+      case Config.TASK_SCOPE.OWN:
+        return String(task['Owner ID']) === String(userId);
+      case 'PARTICIPANT':
+        return this._isParticipant(userId, task['Task ID']);
+      case Config.TASK_SCOPE.SHARED:
+        return task['Operational Scope'] === Config.TASK_SCOPE.SHARED;
       default:
         return false;
     }
   },
 
-  canBulkReassign: function (userId) {
-    if (PermissionService.isAdmin(userId)) return true;
-    var roles = PermissionService.getRoles(userId);
-    return this._isManagerOrAbove(roles);
+  // Lógica derivada — SOLO para acciones sin fila en Task_Permissions
+  // (ver cabecera del archivo). No usar para acciones ya modeladas.
+  _fallbackCan: function (userId, action, task) {
+    var isOwner = String(task['Owner ID']) === String(userId);
+    var isSupervisorOfOwner = this._supervises(userId, task['Owner ID']);
+    var isManagerOfDepartment = this._managesDepartment(userId, task.Department);
+    var A = Config.TASK_ACTIONS;
+
+    switch (action) {
+      case A.OPEN:
+      case A.RESUME:
+      case A.COMPLETE_SUBTASK:
+        return isOwner || isSupervisorOfOwner || isManagerOfDepartment;
+      default:
+        return isOwner || isSupervisorOfOwner || isManagerOfDepartment;
+    }
   },
 
   _isParticipant: function (userId, taskId) {
@@ -99,8 +112,7 @@ var TaskPermissionService = {
 
   // Un usuario "supervisa" a ownerId si es su Supervisor, su Manager, o es
   // el propio owner (para no negar acciones normales de lifecycle sobre la
-  // propia Task). NO usar esto para REASSIGN/TAKE_OWNERSHIP/adjustments —
-  // ahí hace falta un supervisor real, ver _isRealSupervisorOf.
+  // propia Task). Solo usado por _fallbackCan.
   _supervises: function (candidateId, ownerId) {
     if (String(candidateId) === String(ownerId)) return true;
     return this._isRealSupervisorOf(candidateId, ownerId);
@@ -117,14 +129,6 @@ var TaskPermissionService = {
     if (!this._isManagerOrAbove(roles)) return false;
     var user = new UsersRepository().findById(userId);
     return !!user && String(user['Department ID']) === String(departmentId);
-  },
-
-  _isSupervisorOrAbove: function (roles) {
-    return (
-      roles.indexOf(Config.ROLES.SUPERVISOR) !== -1 ||
-      roles.indexOf(Config.ROLES.MANAGER) !== -1 ||
-      roles.indexOf(Config.ROLES.DIRECTOR) !== -1
-    );
   },
 
   _isManagerOrAbove: function (roles) {

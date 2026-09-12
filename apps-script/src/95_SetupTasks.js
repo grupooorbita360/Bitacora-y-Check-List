@@ -3,10 +3,11 @@
  * bootstrapTestEnvironment() (90_Setup.js) — no hace falta correrla aparte.
  *
  * Task_Status_Config y Task_Status_Transitions se siembran con los valores
- * EXACTOS de la sección 12-13 del prompt maestro (confirmados contra el
- * Sheet real en la auditoría de Fase 1). Task_Config usa el catálogo ya
- * corregido en docs/01-modelo-datos.md (sin "Reasignación"). Task_Permissions
- * y Task_Assignment_Config NO se crean aquí — ver docs/06-fase-3-decisiones.md.
+ * EXACTOS de la sección 12-13 del prompt maestro. Task_Config usa el
+ * catálogo ya corregido en docs/01-modelo-datos.md (sin "Reasignación").
+ * Task_Permissions (87 filas) y Task_Assignment_Config (19 filas) se
+ * siembran con los datos reales confirmados por Eduardo — ver
+ * docs/06-fase-3-decisiones.md.
  */
 function _ensureTaskAndChecklistTables(ss) {
   _ensureSheet(ss, Config.SHEET_TABS.TASKS, [
@@ -34,6 +35,12 @@ function _ensureTaskAndChecklistTables(ss) {
     'ID', 'From Status', 'To Status', 'Action', 'Requires Comment', 'Requires Review Date'
   ]);
   var taskConfigSheet = _ensureSheet(ss, Config.SHEET_TABS.TASK_CONFIG, ['ID', 'Departamento', 'Rol', 'Task Type', 'Activo', 'Orden']);
+  var taskPermissionsSheet = _ensureSheet(ss, Config.SHEET_TABS.TASK_PERMISSIONS, [
+    'ID', 'Departamento', 'Rol', 'Accion', 'Alcance', 'Activo'
+  ]);
+  var taskAssignmentConfigSheet = _ensureSheet(ss, Config.SHEET_TABS.TASK_ASSIGNMENT_CONFIG, [
+    'ID', 'Accion_Regla', 'Rol_Origen', 'Alcance', 'Rol_Destino', 'Mismo_Departamento', 'Requiere_Aprobacion', 'Activo'
+  ]);
   var checklistConfigSheet = _ensureSheet(ss, Config.SHEET_TABS.CHECKLIST_CONFIG, [
     'ID', 'Departamento', 'Actividad', 'Tipo', 'Ayuda', 'Prioridad', 'Frecuencia', 'SUPs requeridos', 'Activo', 'Orden'
   ]);
@@ -44,6 +51,8 @@ function _ensureTaskAndChecklistTables(ss) {
   if (statusConfigSheet.getLastRow() < 2) _seedTaskStatusConfig();
   if (transitionsSheet.getLastRow() < 2) _seedTaskStatusTransitions();
   if (taskConfigSheet.getLastRow() < 2) _seedTaskConfig();
+  if (taskPermissionsSheet.getLastRow() < 2) _seedTaskPermissionsReal();
+  if (taskAssignmentConfigSheet.getLastRow() < 2) _seedTaskAssignmentConfigReal();
   if (checklistConfigSheet.getLastRow() < 2) _seedChecklistConfigExamples();
 }
 
@@ -117,6 +126,107 @@ function _seedTaskConfig() {
     { ID: 'TC19', dept: D, rol: R.AGENT, tipo: 'Otro', orden: 4 }
   ].forEach(function (row) {
     repo.create({ ID: row.ID, Departamento: row.dept, Rol: row.rol, 'Task Type': row.tipo, Activo: true, Orden: row.orden });
+  });
+}
+
+// Task_Permissions REAL (87 filas, TP001-TP087) — confirmadas exactas por
+// Eduardo contra NEW_Bitacora.xlsx. Todas Departamento=GLOBAL.
+function _seedTaskPermissionsReal() {
+  var repo = new TaskPermissionsRepository();
+  var G = Config.RESERVED_SCOPE_GLOBAL;
+  var R = Config.ROLES;
+  [
+    ['TP001', R.DIRECTOR, 'VIEW', 'ALL'], ['TP002', R.DIRECTOR, 'CREATE', 'ALL'],
+    ['TP003', R.DIRECTOR, 'EDIT', 'ALL'], ['TP004', R.DIRECTOR, 'ASSIGN', 'ALL'],
+    ['TP005', R.DIRECTOR, 'REASSIGN', 'ALL'], ['TP006', R.DIRECTOR, 'TAKE_OWNERSHIP', 'ALL'],
+    ['TP007', R.DIRECTOR, 'COMPLETE', 'ALL'], ['TP008', R.DIRECTOR, 'SNOOZE', 'ALL'],
+    ['TP009', R.DIRECTOR, 'REOPEN', 'ALL'], ['TP010', R.DIRECTOR, 'REQUEST_ADJUSTMENT', 'ALL'],
+    ['TP011', R.DIRECTOR, 'APPROVE_ADJUSTMENT', 'ALL'], ['TP012', R.DIRECTOR, 'CANCEL', 'ALL'],
+    ['TP013', R.DIRECTOR, 'ADD_PARTICIPANT', 'ALL'], ['TP014', R.DIRECTOR, 'REMOVE_PARTICIPANT', 'ALL'],
+    ['TP015', R.DIRECTOR, 'ADD_COMMENT', 'ALL'], ['TP016', R.DIRECTOR, 'VIEW_HISTORY', 'ALL'],
+    ['TP017', R.DIRECTOR, 'VIEW_SUBTASKS', 'ALL'], ['TP018', R.DIRECTOR, 'CREATE_SUBTASK', 'ALL'],
+
+    ['TP019', R.MANAGER, 'VIEW', 'DEPARTMENT'], ['TP020', R.MANAGER, 'VIEW', 'CROSS_DEPARTMENT'],
+    ['TP021', R.MANAGER, 'CREATE', 'DEPARTMENT'], ['TP022', R.MANAGER, 'EDIT', 'DEPARTMENT'],
+    ['TP023', R.MANAGER, 'ASSIGN', 'DEPARTMENT'], ['TP024', R.MANAGER, 'ASSIGN', 'CROSS_DEPARTMENT'],
+    ['TP025', R.MANAGER, 'REASSIGN', 'DEPARTMENT'], ['TP026', R.MANAGER, 'REASSIGN', 'CROSS_DEPARTMENT'],
+    ['TP027', R.MANAGER, 'TAKE_OWNERSHIP', 'SHARED'], ['TP028', R.MANAGER, 'COMPLETE', 'DEPARTMENT'],
+    ['TP029', R.MANAGER, 'SNOOZE', 'DEPARTMENT'], ['TP030', R.MANAGER, 'REOPEN', 'DEPARTMENT'],
+    ['TP031', R.MANAGER, 'REQUEST_ADJUSTMENT', 'DEPARTMENT'], ['TP032', R.MANAGER, 'APPROVE_ADJUSTMENT', 'DEPARTMENT'],
+    ['TP033', R.MANAGER, 'CANCEL', 'DEPARTMENT'], ['TP034', R.MANAGER, 'ADD_PARTICIPANT', 'DEPARTMENT'],
+    ['TP035', R.MANAGER, 'REMOVE_PARTICIPANT', 'DEPARTMENT'], ['TP036', R.MANAGER, 'ADD_COMMENT', 'DEPARTMENT'],
+    ['TP037', R.MANAGER, 'VIEW_HISTORY', 'DEPARTMENT'], ['TP038', R.MANAGER, 'VIEW_HISTORY', 'CROSS_DEPARTMENT'],
+    ['TP039', R.MANAGER, 'VIEW_SUBTASKS', 'DEPARTMENT'], ['TP040', R.MANAGER, 'CREATE_SUBTASK', 'DEPARTMENT'],
+
+    ['TP041', R.SUPERVISOR, 'VIEW', 'DEPARTMENT'], ['TP042', R.SUPERVISOR, 'VIEW', 'CROSS_DEPARTMENT'],
+    ['TP043', R.SUPERVISOR, 'CREATE', 'OWN'], ['TP044', R.SUPERVISOR, 'EDIT', 'OWN'],
+    ['TP045', R.SUPERVISOR, 'EDIT', 'PARTICIPANT'], ['TP046', R.SUPERVISOR, 'ASSIGN', 'DEPARTMENT'],
+    ['TP047', R.SUPERVISOR, 'ASSIGN', 'CROSS_DEPARTMENT'], ['TP048', R.SUPERVISOR, 'REASSIGN', 'DEPARTMENT'],
+    ['TP049', R.SUPERVISOR, 'REASSIGN', 'CROSS_DEPARTMENT'], ['TP050', R.SUPERVISOR, 'TAKE_OWNERSHIP', 'SHARED'],
+    ['TP051', R.SUPERVISOR, 'COMPLETE', 'DEPARTMENT'], ['TP052', R.SUPERVISOR, 'SNOOZE', 'DEPARTMENT'],
+    ['TP053', R.SUPERVISOR, 'REOPEN', 'DEPARTMENT'], ['TP054', R.SUPERVISOR, 'REQUEST_ADJUSTMENT', 'OWN'],
+    ['TP055', R.SUPERVISOR, 'APPROVE_ADJUSTMENT', 'DEPARTMENT'], ['TP056', R.SUPERVISOR, 'APPROVE_ADJUSTMENT', 'CROSS_DEPARTMENT'],
+    ['TP057', R.SUPERVISOR, 'CANCEL', 'DEPARTMENT'], ['TP058', R.SUPERVISOR, 'ADD_PARTICIPANT', 'DEPARTMENT'],
+    ['TP059', R.SUPERVISOR, 'ADD_PARTICIPANT', 'CROSS_DEPARTMENT'], ['TP060', R.SUPERVISOR, 'REMOVE_PARTICIPANT', 'DEPARTMENT'],
+    ['TP061', R.SUPERVISOR, 'REMOVE_PARTICIPANT', 'CROSS_DEPARTMENT'], ['TP062', R.SUPERVISOR, 'ADD_COMMENT', 'DEPARTMENT'],
+    ['TP063', R.SUPERVISOR, 'ADD_COMMENT', 'CROSS_DEPARTMENT'], ['TP064', R.SUPERVISOR, 'VIEW_HISTORY', 'DEPARTMENT'],
+    ['TP065', R.SUPERVISOR, 'VIEW_HISTORY', 'CROSS_DEPARTMENT'], ['TP066', R.SUPERVISOR, 'VIEW_SUBTASKS', 'DEPARTMENT'],
+    ['TP067', R.SUPERVISOR, 'CREATE_SUBTASK', 'OWN'], ['TP068', R.SUPERVISOR, 'CREATE_SUBTASK', 'PARTICIPANT'],
+
+    ['TP069', R.AGENT, 'VIEW', 'OWN'], ['TP070', R.AGENT, 'VIEW', 'PARTICIPANT'],
+    ['TP071', R.AGENT, 'VIEW', 'SHARED'], ['TP072', R.AGENT, 'CREATE', 'OWN'],
+    ['TP073', R.AGENT, 'EDIT', 'OWN'], ['TP074', R.AGENT, 'COMPLETE', 'OWN'],
+    ['TP075', R.AGENT, 'SNOOZE', 'OWN'], ['TP076', R.AGENT, 'REQUEST_ADJUSTMENT', 'OWN'],
+    ['TP077', R.AGENT, 'ADD_COMMENT', 'OWN'], ['TP078', R.AGENT, 'ADD_COMMENT', 'PARTICIPANT'],
+    ['TP079', R.AGENT, 'VIEW_HISTORY', 'OWN'], ['TP080', R.AGENT, 'VIEW_HISTORY', 'PARTICIPANT'],
+    ['TP081', R.AGENT, 'VIEW_HISTORY', 'SHARED'], ['TP082', R.AGENT, 'VIEW_SUBTASKS', 'OWN'],
+    ['TP083', R.AGENT, 'CREATE_SUBTASK', 'OWN'], ['TP084', R.AGENT, 'TAKE_OWNERSHIP', 'SHARED'],
+
+    ['TP085', R.DIRECTOR, 'BULK_REASSIGN', 'ALL'], ['TP086', R.MANAGER, 'BULK_REASSIGN', 'DEPARTMENT'],
+    ['TP087', R.SUPERVISOR, 'BULK_REASSIGN', 'DEPARTMENT']
+  ].forEach(function (row) {
+    repo.create({ ID: row[0], Departamento: G, Rol: row[1], Accion: row[2], Alcance: row[3], Activo: true });
+  });
+}
+
+// Task_Assignment_Config REAL (19 filas, TA01-TA19) — confirmadas exactas
+// por Eduardo. Requiere_Aprobacion es NO en las 19 (se lee, no cambia el
+// flujo hoy — ver docs/06-fase-3-decisiones.md).
+function _seedTaskAssignmentConfigReal() {
+  var repo = new TaskAssignmentConfigRepository();
+  var R = Config.ROLES;
+  var AR = TaskAssignmentService.ACTION_RULES;
+  [
+    ['TA01', AR.ASSIGN_REASSIGN, R.DIRECTOR, 'ALL', R.DIRECTOR, false],
+    ['TA02', AR.ASSIGN_REASSIGN, R.DIRECTOR, 'ALL', R.MANAGER, false],
+    ['TA03', AR.ASSIGN_REASSIGN, R.DIRECTOR, 'ALL', R.SUPERVISOR, false],
+    ['TA04', AR.ASSIGN_REASSIGN, R.DIRECTOR, 'ALL', R.AGENT, false],
+    ['TA05', AR.ASSIGN_REASSIGN, R.MANAGER, 'DEPARTMENT', R.SUPERVISOR, true],
+    ['TA06', AR.ASSIGN_REASSIGN, R.MANAGER, 'DEPARTMENT', R.AGENT, true],
+    ['TA07', AR.ASSIGN_REASSIGN, R.SUPERVISOR, 'DEPARTMENT', R.SUPERVISOR, true],
+    ['TA08', AR.ASSIGN_REASSIGN, R.SUPERVISOR, 'DEPARTMENT', R.AGENT, true],
+    ['TA09', AR.TAKE_OWNERSHIP, R.AGENT, 'SHARED', R.AGENT, true],
+    ['TA10', AR.TAKE_OWNERSHIP, R.SUPERVISOR, 'SHARED', R.SUPERVISOR, true],
+    ['TA11', AR.TAKE_OWNERSHIP, R.SUPERVISOR, 'SHARED', R.AGENT, true],
+    ['TA12', AR.BULK_REASSIGN, R.DIRECTOR, 'ALL', R.DIRECTOR, false],
+    ['TA13', AR.BULK_REASSIGN, R.DIRECTOR, 'ALL', R.MANAGER, false],
+    ['TA14', AR.BULK_REASSIGN, R.DIRECTOR, 'ALL', R.SUPERVISOR, false],
+    ['TA15', AR.BULK_REASSIGN, R.DIRECTOR, 'ALL', R.AGENT, false],
+    ['TA16', AR.BULK_REASSIGN, R.MANAGER, 'DEPARTMENT', R.SUPERVISOR, true],
+    ['TA17', AR.BULK_REASSIGN, R.MANAGER, 'DEPARTMENT', R.AGENT, true],
+    ['TA18', AR.BULK_REASSIGN, R.SUPERVISOR, 'DEPARTMENT', R.SUPERVISOR, true],
+    ['TA19', AR.BULK_REASSIGN, R.SUPERVISOR, 'DEPARTMENT', R.AGENT, true]
+  ].forEach(function (row) {
+    repo.create({
+      ID: row[0],
+      Accion_Regla: row[1],
+      Rol_Origen: row[2],
+      Alcance: row[3],
+      Rol_Destino: row[4],
+      Mismo_Departamento: row[5],
+      Requiere_Aprobacion: false,
+      Activo: true
+    });
   });
 }
 

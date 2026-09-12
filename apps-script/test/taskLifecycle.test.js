@@ -99,7 +99,11 @@ test('lifecycle: ciclo completo WAITING -> RESUME -> COMPLETE, y REOPEN vuelve a
   assert.equal(resumed.Status, 'IN_PROGRESS');
   const completed = ctx.TaskService.transition(task['Task ID'], 'COMPLETE', 'U004', { comment: 'listo' });
   assert.equal(completed.Status, 'COMPLETED');
-  const reopened = ctx.TaskService.transition(task['Task ID'], 'REOPEN', 'U004', { comment: 'faltó algo' });
+  // REOPEN no tiene fila para Agent en Task_Permissions (TP009/030/053 son
+  // Director/Manager/Supervisor) — un Agent no puede reabrir ni su propia
+  // Task; hace falta su Supervisor (U002 Marta).
+  assert.throws(() => ctx.TaskService.transition(task['Task ID'], 'REOPEN', 'U004', { comment: 'x' }), /permiso/);
+  const reopened = ctx.TaskService.transition(task['Task ID'], 'REOPEN', 'U002', { comment: 'faltó algo' });
   assert.equal(reopened.Status, 'PENDING');
 });
 
@@ -119,7 +123,13 @@ test('permisos: el Supervisor de un Agent sí puede actuar sobre su Task', () =>
 
 test('takeOwnership: no crea Participant y deja registro en History', () => {
   const ctx = setUp();
-  const task = ctx.TaskService.create({ title: 'x', type: 'Caso', department: 'DEP001', ownerId: 'U004' }, 'U004');
+  // TAKE_OWNERSHIP solo tiene Alcance=SHARED en Task_Permissions (TP006/027/
+  // 050/084): requiere que la Task esté marcada Operational Scope=SHARED,
+  // igual que el caso "Task Shared" de la sección 10 del prompt maestro.
+  const task = ctx.TaskService.create(
+    { title: 'x', type: 'Caso', department: 'DEP001', ownerId: 'U004', operationalScope: 'SHARED' },
+    'U004'
+  );
   ctx.TaskService.takeOwnership(task['Task ID'], 'U005', 'U002');
   const updatedTask = new ctx.TasksRepository().findById(task['Task ID']);
   assert.equal(updatedTask['Owner ID'], 'U005');
@@ -203,10 +213,28 @@ test('comments: se registran en Task_History como COMMENT_ADDED', () => {
 test('participants: agregar y quitar no duplica filas (Participant ID compuesto)', () => {
   const ctx = setUp();
   const task = ctx.TaskService.create({ title: 'x', type: 'Caso', department: 'DEP001', ownerId: 'U004' }, 'U004');
-  ctx.TaskService.addParticipant(task['Task ID'], 'U006', 'U004');
-  ctx.TaskService.addParticipant(task['Task ID'], 'U006', 'U004'); // idempotente
+  // ADD_PARTICIPANT/REMOVE_PARTICIPANT no tienen fila para Agent en
+  // Task_Permissions (TP013/034/058-061 son Director/Manager/Supervisor) —
+  // lo hace el Supervisor (U002 Marta), no el propio Agent dueño de la Task.
+  ctx.TaskService.addParticipant(task['Task ID'], 'U006', 'U002');
+  ctx.TaskService.addParticipant(task['Task ID'], 'U006', 'U002'); // idempotente
   assert.equal(new ctx.TaskParticipantsRepository().findAll().length, 1);
 
-  ctx.TaskService.removeParticipant(task['Task ID'], 'U006', 'U004');
+  ctx.TaskService.removeParticipant(task['Task ID'], 'U006', 'U002');
   assert.equal(new ctx.TaskParticipantsRepository().findByTask(task['Task ID']).length, 0);
+});
+
+test('participants: Role in Task usa los 4 valores reales, COLLABORATOR por defecto', () => {
+  const ctx = setUp();
+  const task = ctx.TaskService.create({ title: 'x', type: 'Caso', department: 'DEP001', ownerId: 'U004' }, 'U004');
+  const created = ctx.TaskService.addParticipant(task['Task ID'], 'U006', 'U002');
+  assert.equal(created['Role in Task'], 'COLLABORATOR');
+
+  const reviewer = ctx.TaskService.addParticipant(task['Task ID'], 'U007', 'U002', 'REVIEWER');
+  assert.equal(reviewer['Role in Task'], 'REVIEWER');
+
+  assert.throws(
+    () => ctx.TaskService.addParticipant(task['Task ID'], 'U005', 'U002', 'NOT_A_REAL_ROLE'),
+    /Role in Task inválido/
+  );
 });

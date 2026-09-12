@@ -7,7 +7,7 @@ enfoque que HotelOS).
 |---|---|---|
 | **1** | Arquitectura y limpieza de datos: tablas, relaciones, reglas, permisos, flujos, módulos; cerrar las decisiones del Anexo A | ✅ Completada — ver `03-anexo-a-auditoria.md` |
 | **2** | Backend foundation: Config, Auth, Users, Departments, Permissions, capa Repository/DAO | ✅ Instalada y validada por Eduardo en el Sheet personal real |
-| **3** | Tasks (CRUD, permisos, assignment, lifecycle, history, comments, participants, subtasks, adjustments, bulk reassignment) **+ Checklist** (`Checklist_Config`, `Checklist_Runs`, conversión a Task) | ✅ Código y tests entregados en `apps-script/` — ver `06-fase-3-decisiones.md` para lo que quedó como motor de código (no como transcripción literal) y necesita reconciliarse contra el Sheet real. Pendiente de instalar y validar. |
+| **3** | Tasks (CRUD, permisos, assignment, lifecycle, history, comments, participants, subtasks, adjustments, bulk reassignment) **+ Checklist** (`Checklist_Config`, `Checklist_Runs`, conversión a Task) | ✅ Código y tests entregados en `apps-script/`, con las 87 reglas reales de `Task_Permissions` y las 19 de `Task_Assignment_Config` ya sembradas (ver `06-fase-3-decisiones.md`). Pendiente de instalar en el Sheet real y validar. |
 | **4** | Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task detail, Modals (Apps Script Web App, HTML Service, desktop-first) | ⏳ Pendiente |
 | **5** | People | ⏳ Pendiente |
 | **6** | Integrations: Bitácora, y otras fuentes internas (`Leads` queda explícitamente fuera de alcance — ver `01-modelo-datos.md`) | ⏳ Pendiente |

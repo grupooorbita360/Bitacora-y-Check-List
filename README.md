@@ -27,23 +27,23 @@ confirmados). El detalle vive en [`docs/`](docs/):
 | [`docs/03-anexo-a-auditoria.md`](docs/03-anexo-a-auditoria.md) | Auditoría prompt vs. datos reales — decisiones cerradas (registro histórico) |
 | [`docs/04-protocolo-despliegue.md`](docs/04-protocolo-despliegue.md) | Entorno de construcción (repo/Sheet personal) vs. entorno de entrega (Workspace empresa) |
 | [`docs/05-roadmap.md`](docs/05-roadmap.md) | Fases 1–7 y estado de cada una |
-| [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Qué de Fase 3 es literal del prompt maestro y qué es un motor de código inferido pendiente de reconciliar |
+| [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Cómo se resolvió Task_Permissions/Task_Assignment_Config/Task_History con los datos reales, y qué queda pendiente |
 
 Fase 3 (Tasks + Checklist: CRUD, lifecycle, history, comments,
 participants, subtasks, adjustments, bulk reassignment, Checklist_Config/
 Checklist_Runs y conversión a Task) ya tiene código y tests: ver
-[`apps-script/`](apps-script/). Corre `cd apps-script && npm test` para
-validar toda la lógica sin depender de un Sheet real (45 tests, entre
-Fase 2 y Fase 3).
+[`apps-script/`](apps-script/). Incluye las 87 reglas reales de
+`Task_Permissions` y las 19 de `Task_Assignment_Config` (confirmadas por
+Eduardo), leídas como datos de configuración en vez de derivadas por
+lógica. Corre `cd apps-script && npm test` para validar toda la lógica sin
+depender de un Sheet real (53 tests, entre Fase 2 y Fase 3).
 
-**Aún no se ha instalado en el Sheet real.** Antes de darla por cerrada,
-hay que instalarla (mismo Sheet de Fase 2, `bootstrapTestEnvironment()` ya
-crea las hojas de Tasks/Checklist) y reconciliar contra las hojas reales
-`Task_Permissions`/`Task_Assignment_Config`/`Task_History` los puntos
-señalados en `docs/06-fase-3-decisiones.md` — no se tuvo acceso a su
-contenido literal en esta sesión, así que Fase 3 implementa esas partes
-como un motor de código derivado de reglas confirmadas, no como
-transcripción.
+**Aún no se ha instalado en el Sheet real.** El siguiente paso es
+instalarla (mismo Sheet de Fase 2, `bootstrapTestEnvironment()` ya crea y
+siembra las hojas de Tasks/Checklist) y validar el flujo real antes de
+avanzar a Fase 4. Lo que queda pendiente de refinamiento (acciones reales
+sembradas pero aún no invocadas por `TaskService`, delegación
+cross-departamento) está señalado en `docs/06-fase-3-decisiones.md`.
 
 ## Principio rector
 

@@ -17,6 +17,8 @@ var Config = {
     TASK_STATUS_CONFIG: 'Task_Status_Config',
     TASK_STATUS_TRANSITIONS: 'Task_Status_Transitions',
     TASK_CONFIG: 'Task_Config',
+    TASK_PERMISSIONS: 'Task_Permissions',
+    TASK_ASSIGNMENT_CONFIG: 'Task_Assignment_Config',
     CHECKLIST_CONFIG: 'Checklist_Config',
     CHECKLIST_RUNS: 'Checklist_Runs'
   },
@@ -41,22 +43,35 @@ var Config = {
     CANCELLED: 'CANCELLED'
   },
 
+  // Nombres alineados 1:1 con la columna Accion de Task_Permissions donde
+  // existe fila real (VIEW, CREATE, EDIT, ASSIGN, REASSIGN, TAKE_OWNERSHIP,
+  // COMPLETE, SNOOZE, REOPEN, REQUEST_ADJUSTMENT, APPROVE_ADJUSTMENT,
+  // CANCEL, ADD_PARTICIPANT, REMOVE_PARTICIPANT, ADD_COMMENT, VIEW_HISTORY,
+  // VIEW_SUBTASKS, CREATE_SUBTASK, BULK_REASSIGN). OPEN, RESUME y
+  // COMPLETE_SUBTASK no tienen fila en Task_Permissions — TaskPermissionService
+  // los resuelve con la lógica derivada (fallback), ver docs/06-fase-3-decisiones.md.
   TASK_ACTIONS: {
+    VIEW: 'VIEW',
+    CREATE: 'CREATE',
+    EDIT: 'EDIT',
+    ASSIGN: 'ASSIGN',
     OPEN: 'OPEN',
     COMPLETE: 'COMPLETE',
     SNOOZE: 'SNOOZE',
     RESUME: 'RESUME',
     CANCEL: 'CANCEL',
     REOPEN: 'REOPEN',
-    VIEW: 'VIEW',
     REASSIGN: 'REASSIGN',
     BULK_REASSIGN: 'BULK_REASSIGN',
     TAKE_OWNERSHIP: 'TAKE_OWNERSHIP',
     ADD_COMMENT: 'ADD_COMMENT',
     ADD_PARTICIPANT: 'ADD_PARTICIPANT',
     REMOVE_PARTICIPANT: 'REMOVE_PARTICIPANT',
-    ADD_SUBTASK: 'ADD_SUBTASK',
+    VIEW_HISTORY: 'VIEW_HISTORY',
+    VIEW_SUBTASKS: 'VIEW_SUBTASKS',
+    CREATE_SUBTASK: 'CREATE_SUBTASK',
     COMPLETE_SUBTASK: 'COMPLETE_SUBTASK',
+    REQUEST_ADJUSTMENT: 'REQUEST_ADJUSTMENT',
     APPROVE_ADJUSTMENT: 'APPROVE_ADJUSTMENT',
     REJECT_ADJUSTMENT: 'REJECT_ADJUSTMENT'
   },
@@ -108,12 +123,14 @@ var Config = {
     DATA: 'DATA'
   },
 
-  // Reconstruidos a partir de las reglas de negocio del prompt maestro —
-  // no se tuvo acceso en esta fase al listado literal de Task_History en
-  // NEW_Bitacora.xlsx. Ver docs/06-fase-3-decisiones.md antes de tratarlos
-  // como definitivos.
+  // Confirmados contra el listado real de Task_History (18 eventos): se
+  // agregó ASSIGNED (asignación explícita de Owner distinta de quien crea),
+  // se quitó ADJUSTMENT_CANCELLED (no existe — cancelar un ajuste queda
+  // reflejado solo en Task_Adjustments.Status, sin evento de History) y se
+  // renombró SUBTASK_ADDED a SUBTASK_CREATED.
   HISTORY_EVENTS: {
     CREATED: 'CREATED',
+    ASSIGNED: 'ASSIGNED',
     OPENED: 'OPENED',
     OWNERSHIP_TAKEN: 'OWNERSHIP_TAKEN',
     COMPLETED: 'COMPLETED',
@@ -126,11 +143,17 @@ var Config = {
     ADJUSTMENT_REQUESTED: 'ADJUSTMENT_REQUESTED',
     ADJUSTMENT_APPROVED: 'ADJUSTMENT_APPROVED',
     ADJUSTMENT_REJECTED: 'ADJUSTMENT_REJECTED',
-    ADJUSTMENT_CANCELLED: 'ADJUSTMENT_CANCELLED',
     PARTICIPANT_ADDED: 'PARTICIPANT_ADDED',
     PARTICIPANT_REMOVED: 'PARTICIPANT_REMOVED',
-    SUBTASK_ADDED: 'SUBTASK_ADDED',
+    SUBTASK_CREATED: 'SUBTASK_CREATED',
     SUBTASK_COMPLETED: 'SUBTASK_COMPLETED'
+  },
+
+  TASK_PARTICIPANT_ROLES: {
+    COLLABORATOR: 'COLLABORATOR',
+    SUPPORT: 'SUPPORT',
+    REVIEWER: 'REVIEWER',
+    OBSERVER: 'OBSERVER'
   },
 
   getSpreadsheet: function () {

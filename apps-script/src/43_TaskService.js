@@ -20,6 +20,7 @@ var TaskService = {
     var ownerId = input.ownerId || actingUserId;
     var owner = new UsersRepository().findById(ownerId);
     if (!owner) throw new Error('El Owner indicado no existe.');
+    var isExplicitAssignment = ownerId !== actingUserId;
 
     var tasks = new TasksRepository();
     var taskId = tasks.nextSequentialId('T', 5);
@@ -57,6 +58,11 @@ var TaskService = {
 
     tasks.create(task);
     TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.CREATED, actingUserId, '', { type: input.type });
+    // ASSIGNED es un evento distinto de CREATED cuando el creador asigna la
+    // Task a otra persona (no se registra si uno se crea la Task a sí mismo).
+    if (isExplicitAssignment) {
+      TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.ASSIGNED, actingUserId, '', { ownerId: ownerId });
+    }
     return task;
   },
 
@@ -136,6 +142,9 @@ var TaskService = {
     }
     var newOwner = new UsersRepository().findById(newOwnerId);
     if (!newOwner) throw new Error('El nuevo Owner no existe.');
+    if (!TaskAssignmentService.canAssignTo(actingUserId, newOwnerId, TaskAssignmentService.ACTION_RULES.TAKE_OWNERSHIP)) {
+      throw new Error('El rol de "' + newOwner.Nombre + '" no puede tomar ownership según Task_Assignment_Config.');
+    }
 
     var previousOwnerId = task['Owner ID'];
     var updated = tasks.update(taskId, {
@@ -153,14 +162,58 @@ var TaskService = {
   },
 
   reassign: function (taskId, newOwnerId, actingUserId, comment) {
+    return this._applyReassign(
+      taskId,
+      newOwnerId,
+      actingUserId,
+      comment,
+      Config.TASK_ACTIONS.REASSIGN,
+      TaskAssignmentService.ACTION_RULES.ASSIGN_REASSIGN
+    );
+  },
+
+  // BULK_REASSIGN es una acción, nunca un Task Type (sección 35/decisión
+  // cerrada Fase 1). Es una acción y una regla propias en los datos reales
+  // (Task_Permissions/Task_Assignment_Config), distinta de REASSIGN: un
+  // Supervisor puede tener BULK_REASSIGN limitado a su departamento aunque
+  // REASSIGN individual le alcance cross-department (ver TP087 vs TP048-49).
+  // Reasigna lo que pueda y reporta el resto como error por Task, en vez de
+  // abortar todo el lote.
+  bulkReassign: function (taskIds, newOwnerId, actingUserId, comment) {
+    if (!TaskPermissionService.canBulkReassign(actingUserId)) {
+      throw new Error('No tienes permiso para reasignar en bloque.');
+    }
+    var newOwner = new UsersRepository().findById(newOwnerId);
+    if (!newOwner) throw new Error('El nuevo Owner no existe.');
+    if (!TaskAssignmentService.canAssignTo(actingUserId, newOwnerId, TaskAssignmentService.ACTION_RULES.BULK_REASSIGN)) {
+      throw new Error('El rol de "' + newOwner.Nombre + '" no puede recibir Tasks por bulk reassign según Task_Assignment_Config.');
+    }
+
+    var self = this;
+    return taskIds.map(function (taskId) {
+      try {
+        self._applyReassign(taskId, newOwnerId, actingUserId, comment, Config.TASK_ACTIONS.BULK_REASSIGN, null);
+        return { taskId: taskId, ok: true };
+      } catch (e) {
+        return { taskId: taskId, ok: false, error: e.message };
+      }
+    });
+  },
+
+  // assignmentActionRule en null omite la validación de Task_Assignment_Config
+  // (bulkReassign ya la valida una sola vez para todo el lote, arriba).
+  _applyReassign: function (taskId, newOwnerId, actingUserId, comment, permissionAction, assignmentActionRule) {
     var tasks = new TasksRepository();
     var task = tasks.findById(taskId);
     if (!task) throw new Error('Task no encontrada.');
-    if (!TaskPermissionService.can(actingUserId, Config.TASK_ACTIONS.REASSIGN, task)) {
+    if (!TaskPermissionService.can(actingUserId, permissionAction, task)) {
       throw new Error('No tienes permiso para reasignar directamente; usa requestAdjustment().');
     }
     var newOwner = new UsersRepository().findById(newOwnerId);
     if (!newOwner) throw new Error('El nuevo Owner no existe.');
+    if (assignmentActionRule && !TaskAssignmentService.canAssignTo(actingUserId, newOwnerId, assignmentActionRule)) {
+      throw new Error('El rol de "' + newOwner.Nombre + '" no puede ser el nuevo Owner según Task_Assignment_Config.');
+    }
 
     var updated = tasks.update(taskId, {
       'Owner ID': newOwner['User ID'],
@@ -171,24 +224,6 @@ var TaskService = {
       newOwnerId: newOwnerId
     });
     return updated;
-  },
-
-  // BULK_REASSIGN es una acción, nunca un Task Type (sección 35/decisión
-  // cerrada Fase 1). Reasigna lo que pueda y reporta el resto como error
-  // por Task, en vez de abortar todo el lote.
-  bulkReassign: function (taskIds, newOwnerId, actingUserId, comment) {
-    if (!TaskPermissionService.canBulkReassign(actingUserId)) {
-      throw new Error('No tienes permiso para reasignar en bloque.');
-    }
-    var self = this;
-    return taskIds.map(function (taskId) {
-      try {
-        self.reassign(taskId, newOwnerId, actingUserId, comment);
-        return { taskId: taskId, ok: true };
-      } catch (e) {
-        return { taskId: taskId, ok: false, error: e.message };
-      }
-    });
   },
 
   // --- Comments --------------------------------------------------------
@@ -209,30 +244,43 @@ var TaskService = {
 
   // --- Participants ------------------------------------------------------
 
-  addParticipant: function (taskId, userId, actingUserId) {
+  addParticipant: function (taskId, userId, actingUserId, roleInTask) {
     var task = new TasksRepository().findById(taskId);
     if (!task) throw new Error('Task no encontrada.');
     if (!TaskPermissionService.can(actingUserId, Config.TASK_ACTIONS.ADD_PARTICIPANT, task)) {
       throw new Error('No tienes permiso para agregar participantes.');
     }
+    roleInTask = roleInTask || Config.TASK_PARTICIPANT_ROLES.COLLABORATOR;
+    var validRoles = Object.keys(Config.TASK_PARTICIPANT_ROLES).map(function (k) {
+      return Config.TASK_PARTICIPANT_ROLES[k];
+    });
+    if (validRoles.indexOf(roleInTask) === -1) {
+      throw new Error('Role in Task inválido: "' + roleInTask + '". Debe ser uno de ' + validRoles.join(', ') + '.');
+    }
+
     var participants = new TaskParticipantsRepository();
     var participantId = TaskParticipantsRepository.buildId(taskId, userId);
     var existing = participants.findById(participantId);
     if (existing) {
       if (existing.Activo !== false) return existing;
-      return participants.update(participantId, { Activo: true, 'Added By ID': actingUserId, 'Added At': new Date() });
+      return participants.update(participantId, {
+        Activo: true,
+        'Role in Task': roleInTask,
+        'Added By ID': actingUserId,
+        'Added At': new Date()
+      });
     }
     var created = {
       'Participant ID': participantId,
       'Task ID': taskId,
       'User ID': userId,
-      'Role in Task': 'PARTICIPANT',
+      'Role in Task': roleInTask,
       'Added By ID': actingUserId,
       'Added At': new Date(),
       Activo: true
     };
     participants.create(created);
-    TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.PARTICIPANT_ADDED, actingUserId, '', { userId: userId });
+    TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.PARTICIPANT_ADDED, actingUserId, '', { userId: userId, roleInTask: roleInTask });
     return created;
   },
 
@@ -255,7 +303,7 @@ var TaskService = {
   addSubtask: function (taskId, title, actingUserId) {
     var task = new TasksRepository().findById(taskId);
     if (!task) throw new Error('Task no encontrada.');
-    if (!TaskPermissionService.can(actingUserId, Config.TASK_ACTIONS.ADD_SUBTASK, task)) {
+    if (!TaskPermissionService.can(actingUserId, Config.TASK_ACTIONS.CREATE_SUBTASK, task)) {
       throw new Error('No tienes permiso para agregar subtareas.');
     }
     var subtasks = new TaskSubtasksRepository();
@@ -270,7 +318,7 @@ var TaskService = {
       'Completed At': '',
       Activo: true
     });
-    TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.SUBTASK_ADDED, actingUserId, '', { subtaskId: subtaskId });
+    TaskHistoryService.record(taskId, Config.HISTORY_EVENTS.SUBTASK_CREATED, actingUserId, '', { subtaskId: subtaskId });
     return subtaskId;
   },
 
@@ -382,14 +430,14 @@ var TaskService = {
     if (!isRequester && !PermissionService.isAdmin(actingUserId)) {
       throw new Error('Solo quien solicitó el ajuste (o un Admin) puede cancelarlo.');
     }
-    adjustments.update(adjustmentId, {
+    // No hay evento de History para esto (ADJUSTMENT_CANCELLED no existe en
+    // el Sheet real, ver docs/06-fase-3-decisiones.md) — la cancelación
+    // queda completamente reflejada en Task_Adjustments (Status/Resolved *).
+    return adjustments.update(adjustmentId, {
       Status: Config.ADJUSTMENT_STATUS.CANCELLED,
       'Resolved By ID': actingUserId,
       'Resolved At': new Date(),
       'Resolution Comment': reason || ''
-    });
-    TaskHistoryService.record(adjustment['Task ID'], Config.HISTORY_EVENTS.ADJUSTMENT_CANCELLED, actingUserId, reason || '', {
-      adjustmentId: adjustmentId
     });
   }
 };

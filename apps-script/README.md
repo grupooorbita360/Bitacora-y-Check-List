@@ -99,16 +99,27 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
 (selector + PIN) no tiene esta limitación porque no depende de
 `Session.getActiveUser()`.
 
-## Qué falta / qué reconciliar
+## Qué ya se resolvió con datos reales
+
+- `Task_Permissions` (87 filas, TP001–TP087) y `Task_Assignment_Config` (19
+  filas, TA01–TA19) ya están sembradas tal cual las confirmó Eduardo
+  (`95_SetupTasks.js`), y `40_TaskPermissionService.js` /
+  `47_TaskAssignmentService.js` las leen en vez de derivarlas por lógica.
+  Detalle en `docs/06-fase-3-decisiones.md`.
+- Los 18 eventos de `Task_History`, corregidos: se agregó `ASSIGNED`, se
+  quitó `ADJUSTMENT_CANCELLED` y se renombró `SUBTASK_ADDED` a
+  `SUBTASK_CREATED`.
+- `Task_Participants['Role in Task']` usa los 4 valores reales
+  (`COLLABORATOR`/`SUPPORT`/`REVIEWER`/`OBSERVER`), con `COLLABORATOR` por
+  defecto.
+
+## Qué falta
 
 - Delegación de acceso cross-departamento para Manager (sección 5 del
   prompt maestro) — no hay tabla `Delegations` todavía.
-- `Task_Permissions` (TP001–TP087) y `Task_Assignment_Config` (TA01–TA19):
-  Fase 3 no transcribió su contenido literal (no estaba disponible en la
-  sesión) — implementó un motor de permisos equivalente en código
-  (`40_TaskPermissionService.js`). Ver `docs/06-fase-3-decisiones.md` antes
-  de instalar, para reconciliar contra las hojas reales.
-- Los 18 tipos de evento de `Task_History` son una reconstrucción, no una
-  transcripción — mismo documento de decisiones.
+- Acciones reales sembradas en `Task_Permissions` que ningún método de
+  `TaskService` invoca todavía: `CREATE`, `EDIT`, `ASSIGN`, `VIEW_HISTORY`,
+  `VIEW_SUBTASKS` (la creación se sigue gateando solo por `Task_Config`,
+  más específico por Task Type). Ver `docs/06-fase-3-decisiones.md`.
 - Frontend/HTML Service (Login, Layout, Dashboard, Task detail) — Fase 4.
 - People — Fase 5.
