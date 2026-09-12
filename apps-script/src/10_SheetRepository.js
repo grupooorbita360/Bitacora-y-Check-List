@@ -95,4 +95,16 @@ var SheetRepository = class {
   softDelete(id) {
     return this.update(id, { Activo: false });
   }
+
+  // Genera IDs legibles tipo PREFIJO+consecutivo (ej. T00001). Asume que
+  // los registros nunca se borran físicamente, solo con softDelete — si
+  // eso cambiara, este esquema tendría que revisarse.
+  nextSequentialId(prefix, padLength) {
+    var count = this.findAll().length;
+    var padded = String(count + 1);
+    while (padded.length < (padLength || 4)) {
+      padded = '0' + padded;
+    }
+    return prefix + padded;
+  }
 }

@@ -12,11 +12,12 @@ desde el día uno para poder migrar a una base de datos real (Postgres/
 Supabase, mismo patrón que HotelOS) sin reconstruir frontend ni lógica de
 negocio.
 
-## Estado actual: Fase 2 entregada
+## Estado actual: Fase 3 entregada
 
-Fase 1 (arquitectura + limpieza de datos) está cerrada: las 5 decisiones
-abiertas de la auditoría de consistencia (Anexo A) fueron resueltas por
-Eduardo. El detalle vive en [`docs/`](docs/):
+Fase 1 (arquitectura + limpieza de datos) y Fase 2 (Config/Auth/Users/
+Departments/Permissions) están cerradas — Fase 2 ya fue instalada y
+validada por Eduardo en su Sheet personal real (login directo y con PIN
+confirmados). El detalle vive en [`docs/`](docs/):
 
 | Documento | Contenido |
 |---|---|
@@ -26,18 +27,23 @@ Eduardo. El detalle vive en [`docs/`](docs/):
 | [`docs/03-anexo-a-auditoria.md`](docs/03-anexo-a-auditoria.md) | Auditoría prompt vs. datos reales — decisiones cerradas (registro histórico) |
 | [`docs/04-protocolo-despliegue.md`](docs/04-protocolo-despliegue.md) | Entorno de construcción (repo/Sheet personal) vs. entorno de entrega (Workspace empresa) |
 | [`docs/05-roadmap.md`](docs/05-roadmap.md) | Fases 1–7 y estado de cada una |
+| [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Qué de Fase 3 es literal del prompt maestro y qué es un motor de código inferido pendiente de reconciliar |
 
-Fase 2 (Config/Auth/Users/Departments/Permissions + capa Repository/DAO) ya
-tiene código y tests: ver [`apps-script/`](apps-script/). Incluye la
-autenticación de dos vías (email único → directo; email compartido →
-selector + PIN) documentada en `docs/01-modelo-datos.md`. Corre
-`cd apps-script && npm test` para validar la lógica sin depender de un
-Sheet real.
+Fase 3 (Tasks + Checklist: CRUD, lifecycle, history, comments,
+participants, subtasks, adjustments, bulk reassignment, Checklist_Config/
+Checklist_Runs y conversión a Task) ya tiene código y tests: ver
+[`apps-script/`](apps-script/). Corre `cd apps-script && npm test` para
+validar toda la lógica sin depender de un Sheet real (45 tests, entre
+Fase 2 y Fase 3).
 
-**Aún no se ha instalado en un Sheet real.** El siguiente paso es que
-Eduardo lo copie a su Sheet personal de prueba
-(`apps-script/README.md` trae el paso a paso) y valide el flujo de login
-antes de avanzar a Fase 3.
+**Aún no se ha instalado en el Sheet real.** Antes de darla por cerrada,
+hay que instalarla (mismo Sheet de Fase 2, `bootstrapTestEnvironment()` ya
+crea las hojas de Tasks/Checklist) y reconciliar contra las hojas reales
+`Task_Permissions`/`Task_Assignment_Config`/`Task_History` los puntos
+señalados en `docs/06-fase-3-decisiones.md` — no se tuvo acceso a su
+contenido literal en esta sesión, así que Fase 3 implementa esas partes
+como un motor de código derivado de reglas confirmadas, no como
+transcripción.
 
 ## Principio rector
 

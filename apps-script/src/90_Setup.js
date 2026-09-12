@@ -24,6 +24,7 @@ function bootstrapTestEnvironment() {
   ]);
   _ensureSheet(ss, Config.SHEET_TABS.USER_ROLES, ['User ID', 'Nombre', 'Rol', 'Activo']);
   _ensureSheet(ss, Config.SHEET_TABS.AUTH_CREDENTIALS, ['User ID', 'PIN Hash', 'Salt', 'Updated At']);
+  _ensureTaskAndChecklistTables(ss);
 
   if (departmentsSheet.getLastRow() < 2) {
     new DepartmentsRepository().create({
