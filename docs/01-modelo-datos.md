@@ -38,6 +38,61 @@ Cambios respecto al Sheet original:
 - Toda la data de usuarios actual (Eduardo, Carlos Riviera, etc.) es data de
   prueba/inventada mientras se arma el sistema, no la nómina real.
 
+## Auth — autenticación de dos vías (decisión Fase 2)
+
+`Login ID` y `Email` son conceptos distintos (sección Users): un correo
+puede ser compartido por varios agentes. La autenticación se resuelve según
+cuántos `Users` activos comparten ese `Email`:
+
+- **Email único** → entra directo. El backend toma
+  `Session.getActiveUser().getEmail()` (identidad de Google ya autenticada
+  por el Web App) y busca el único `User` activo con ese `Email`. No se pide
+  PIN.
+- **Email compartido** (2+ `Users` activos con el mismo `Email`) → el
+  frontend muestra un selector por `Login ID`/`Nombre Corto` y pide un PIN
+  de 4 dígitos para confirmar cuál de esos usuarios está entrando.
+
+**"Requiere PIN" no se guarda como campo.** Se deriva en el momento
+contando cuántos `Users` activos tienen ese `Email` (`> 1` → requiere PIN).
+Guardarlo aparte duplicaría información que ya vive en `Users.Email`
+(Regla de Oro, `00-arquitectura-general.md`).
+
+### Auth_Credentials (nueva)
+
+```
+User ID | PIN Hash | Salt | Updated At
+```
+
+Una fila solo para los usuarios que necesitan PIN (email compartido). Nunca
+se guarda el PIN en texto plano: `PIN Hash = SHA-256(PIN + Salt)` vía
+`Utilities.computeDigest`, `Salt` aleatorio por usuario. El PIN es de 4
+dígitos (limitación conocida y aceptada: un PIN de 4 dígitos es
+intrínsecamente de espacio pequeño incluso con salt — aceptable para este
+alcance porque el reset es exclusivo de Admin y no hay superficie de
+API pública de fuerza bruta más allá del propio Web App). El reset de PIN,
+por ahora, solo lo puede hacer un usuario con rol `Admin` — no hay
+autoservicio de "olvidé mi PIN" en esta fase.
+
+### Datos de prueba inventados (a reemplazar antes de producción)
+
+En el Sheet real, los 7 usuarios de correo compartido de Executive Services
+(Marta, Alessi y los agentes asignados a ambas) no tienen `Login ID`
+cargado. Para poder construir y probar el flujo de selector+PIN, el
+`bootstrapTestEnvironment()` de Fase 2 (`apps-script/src/90_Setup.js`)
+**inventa** `Login ID`, nombres de agentes y un `Email` compartido de
+prueba (`executiveservices.team@example.test`) — todo placeholder, igual
+que el resto de la data de usuarios de Fase 1. **Antes de copiar el código
+al proyecto de Apps Script de la empresa** (`04-protocolo-despliegue.md`),
+estos placeholders deben reemplazarse por los `Login ID` y `Email` reales
+de cada agente — nunca deben llegar al Sheet de producción.
+
+### Alcance no cubierto en Fase 2
+
+Delegación de acceso cross-departamento para Manager (sección 5) no se
+construye todavía — no existe tabla `Delegations` ni mecanismo equivalente.
+`PermissionService.canAccessDepartment` en esta fase solo resuelve
+Admin-global y mismo-departamento; delegación queda señalada, no inventada.
+
 ## User_Roles
 
 ```

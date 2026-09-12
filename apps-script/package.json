@@ -1,0 +1,8 @@
+{
+  "name": "bitacora-apps-script",
+  "private": true,
+  "description": "Fase 2 — Apps Script (Config/Auth/Users/Departments/Permissions + Repository/DAO) para la Plataforma Operativa. Ver docs/04-protocolo-despliegue.md.",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
