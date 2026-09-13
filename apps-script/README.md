@@ -57,6 +57,10 @@ devserver/
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
   *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh.
+scripts/
+  build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
+dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
+.clasp.json.example          Plantilla de config de clasp (rootDir: ./dist-gas). Copiar a .clasp.json (gitignored).
 ```
 
 Los archivos de `src/` llevan prefijo numérico porque Apps Script no tiene
@@ -118,19 +122,43 @@ se reinicia al reiniciar `npm run dev`.
 
 ## Instalar en el Sheet personal de prueba
 
-1. En Google Drive (cuenta personal), crear un Google Sheet nuevo y abrir
+**Paso 0, siempre primero:** `npm run build:gas`. Genera
+`apps-script/dist-gas/` — un directorio **plano** (sin subcarpetas) con
+todo `src/*.js` + `html/*.html` + `appsscript.json` al mismo nivel. A
+partir de ahí, todo lo que sigue trabaja sobre `dist-gas/`, nunca sobre
+`src/`/`html/` directamente — ver `docs/09-deploy-clasp.md` para por qué
+esto es obligatorio (un `clasp push` apuntado a la raíz de `apps-script/`
+rompió el deploy exactamente por saltarse este paso).
+
+### Opción A — clasp (recomendado si ya lo usás)
+
+1. `npm install -g @google/clasp` (una vez) y `clasp login`.
+2. En el editor de Apps Script del Sheet de prueba: **Configuración del
+   proyecto → copiar el Script ID**.
+3. `cp apps-script/.clasp.json.example apps-script/.clasp.json` y pegar
+   ese Script ID (`.clasp.json` ya está en `.gitignore` — es específico de
+   tu proyecto, nunca se commitea).
+4. `npm run clasp:push` (hace `build:gas` y despliega `dist-gas/`).
+
+### Opción B — copiar a mano
+
+1. `npm run build:gas`.
+2. En Google Drive (cuenta personal), crear un Google Sheet nuevo y abrir
    **Extensiones → Apps Script**.
-2. Copiar el contenido de `appsscript.json` al manifiesto del proyecto
-   (`Ver → Mostrar manifiesto de proyecto` si no aparece).
-3. Crear un archivo de script por cada archivo de `src/`, respetando el
-   nombre (sin la extensión `.js`, Apps Script la agrega sola). Crear un
-   archivo **HTML** (no script) por cada archivo de `html/`, también con el
-   mismo nombre.
-4. En **Configuración del proyecto → Propiedades del script**, agregar
+3. Copiar el contenido de `dist-gas/appsscript.json` al manifiesto del
+   proyecto (`Ver → Mostrar manifiesto de proyecto` si no aparece).
+4. Crear un archivo por cada archivo de `dist-gas/` — de script para los
+   `.js`, HTML para los `.html` — con el mismo nombre exacto (sin
+   extensión; Apps Script la agrega sola). Al ser plano, no hay ninguna
+   carpeta que reproducir ni prefijo que agregar.
+
+### Después de A o B
+
+5. En **Configuración del proyecto → Propiedades del script**, agregar
    `SESSION_SECRET` con un valor aleatorio (ej. generado con
    `Utilities.getUuid()` desde el editor). No hace falta `SHEET_ID` si el
    proyecto queda ligado (bound) al Sheet.
-5. Ejecutar `bootstrapTestEnvironment` una vez desde el editor (seleccionar
+6. Ejecutar `bootstrapTestEnvironment` una vez desde el editor (seleccionar
    la función en el desplegable de "Ejecutar" y correrla). Esto crea las
    pestañas de Fase 2 (`Departments`, `Users`, `User_Roles`,
    `Auth_Credentials`) y las de Fase 3 (`Tasks`, `Task_History`,
@@ -140,11 +168,15 @@ se reinicia al reiniciar `npm run dev`.
    documentada en `docs/01-modelo-datos.md` y `docs/06-fase-3-decisiones.md`.
    Si ya la corriste para Fase 2, correrla de nuevo es seguro (idempotente):
    solo agrega lo que falte, sin duplicar nada.
-6. **Implementar → Nueva implementación → Aplicación web.** Ejecutar como:
+7. **Implementar → Nueva implementación → Aplicación web.** Ejecutar como:
    "Usuario que accede" (`USER_ACCESSING`, ya viene en `appsscript.json`);
    acceso: cualquiera dentro del dominio (o "Cualquier usuario" si se
    prueba desde una cuenta personal fuera de Workspace — ver limitación
    abajo). Abrir la URL que entrega el despliegue.
+
+Cada vez que cambie algo en `src/` u `html/`, hay que repetir el paso 0
+(`npm run build:gas` o directamente `npm run clasp:push`, que ya lo hace)
+antes de volver a desplegar — `dist-gas/` no se actualiza solo.
 
 ## Limitación conocida al probar la vía DIRECT (email único)
 
@@ -175,6 +207,10 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
 - `Task_Participants['Role in Task']` usa los 4 valores reales
   (`COLLABORATOR`/`SUPPORT`/`REVIEWER`/`OBSERVER`), con `COLLABORATOR` por
   defecto.
+- Bug de despliegue real con `clasp push` (archivos HTML servidos con el
+  prefijo `html/` en el nombre, `Index`/`Styles`/etc. no se encontraban) —
+  corregido de raíz con `scripts/build-gas.js` (artefacto plano
+  `dist-gas/`), no con un parche de nombres. Ver `docs/09-deploy-clasp.md`.
 
 ## Qué falta
 

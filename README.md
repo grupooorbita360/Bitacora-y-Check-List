@@ -28,6 +28,7 @@ real (Sheet personal + Apps Script). El detalle vive en [`docs/`](docs/):
 | [`docs/06-fase-3-decisiones.md`](docs/06-fase-3-decisiones.md) | Cómo se resolvió Task_Permissions/Task_Assignment_Config/Task_History con los datos reales |
 | [`docs/07-fase-4-decisiones.md`](docs/07-fase-4-decisiones.md) | Qué se construyó del frontend, qué queda fuera (Checklist UI) y cómo se probó en navegador real |
 | [`docs/08-fase-4-hardening.md`](docs/08-fase-4-hardening.md) | IDs atómicos, auto-refresco, specs de Playwright guardadas como tests reales |
+| [`docs/09-deploy-clasp.md`](docs/09-deploy-clasp.md) | Bug real de despliegue con `clasp push` (archivos HTML con prefijo de carpeta) y su corrección permanente |
 
 Fase 4 (Frontend: Login, Layout, Navigation, Dashboard, Tasks, Task
 detail, Modals) ya tiene código: ver [`apps-script/html/`](apps-script/html/)
@@ -44,10 +45,16 @@ Supervisor aprobando/rechazando) y el auto-refresco en vivo. También se
 puede levantar `cd apps-script && npm run dev` y abrir
 `http://localhost:8080` para probarlo a mano.
 
-**Aún no se ha instalado en el Sheet/Apps Script real.** El siguiente paso
-es copiar `apps-script/src/*.js` + `apps-script/html/*.html` al proyecto
-de Apps Script de prueba, desplegar como Web App (`Ejecutar como: Usuario
-que accede`) y repetir el mismo recorrido ya con los datos reales.
+**Ya se desplegó como Web App en el Apps Script de prueba de Eduardo**, lo
+que sacó a la luz un bug real de despliegue: `clasp push` subía los
+archivos HTML con la carpeta `html/` como parte del nombre
+(`html/Index` en vez de `Index`), y el código los buscaba sin ese
+prefijo — Apps Script no encontraba `Index`. Ya está corregido de raíz
+(no parcheando nombres): `apps-script/scripts/build-gas.js` genera un
+artefacto plano (`apps-script/dist-gas/`) que es lo único que se debe
+desplegar de ahora en más, con o sin `clasp` — ver
+`docs/09-deploy-clasp.md`. Se agregaron tests que hubieran detectado esto
+antes de desplegar.
 
 ## Principio rector
 

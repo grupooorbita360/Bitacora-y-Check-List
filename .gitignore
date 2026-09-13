@@ -1,1 +1,11 @@
 node_modules/
+
+# Generado por apps-script/scripts/build-gas.js — nunca se edita a mano,
+# se regenera antes de cada clasp push o copia manual (ver apps-script/README.md).
+apps-script/dist-gas/
+
+# Config local de clasp (scriptId es específico de cada Apps Script
+# project — el de Eduardo, o más adelante el de la empresa). Ver
+# apps-script/.clasp.json.example para la plantilla.
+apps-script/.clasp.json
+.clasprc.json

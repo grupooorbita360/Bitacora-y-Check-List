@@ -2,8 +2,8 @@
  * Entry point del Web App (HTML Service). El HTML vive en apps-script/html/
  * — Apps Script no tiene módulos, así que Index.html se arma incluyendo los
  * demás archivos vía el helper include() en tiempo de render (scriptlets
- * `<?!= include('Nombre'); ?>`), igual que cualquier proyecto Apps Script
- * multi-archivo.
+ * `<?!= include(nombreDeArchivo); ?>`, ver Index.html), igual que
+ * cualquier proyecto Apps Script multi-archivo.
  */
 function doGet() {
   return HtmlService.createTemplateFromFile('Index')
