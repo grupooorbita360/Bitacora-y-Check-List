@@ -106,3 +106,81 @@ test('nextSequentialId: usa LockService.getScriptLock() para el incremento atóm
   ctx.PropertiesService.getScriptProperties = realGetScriptProperties;
   assert.equal(releaseLockCalls, 2, 'releaseLock debe llamarse aunque falle el incremento (finally)');
 });
+
+// Cuenta cuántas veces se llama getRange() sobre una hoja — cada llamada es
+// una operación real contra Sheets en producción, que es lo que sentía
+// "lento" antes de agregar el cache (ver comentario en 10_SheetRepository.js).
+function countGetRangeCalls(sheet) {
+  let calls = 0;
+  const original = sheet.getRange.bind(sheet);
+  sheet.getRange = function (...args) {
+    calls++;
+    return original(...args);
+  };
+  return () => calls;
+}
+
+test('SheetRepository.findAll(): cachea por nombre de hoja — llamadas repetidas no releen el Sheet', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+  const sheet = ctx.__spreadsheet.getSheetByName(ctx.Config.SHEET_TABS.DEPARTMENTS);
+  const getCalls = countGetRangeCalls(sheet);
+
+  repo.findAll();
+  const callsAfterFirst = getCalls();
+  assert.ok(callsAfterFirst > 0, 'la primera llamada sí debe leer el Sheet');
+
+  repo.findAll();
+  repo.findAll();
+  assert.equal(getCalls(), callsAfterFirst, 'llamadas subsecuentes deben servirse del cache, sin nuevas lecturas');
+});
+
+test('SheetRepository: el cache es por nombre de hoja, no por instancia — una instancia nueva también lo aprovecha', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const sheet = ctx.__spreadsheet.getSheetByName(ctx.Config.SHEET_TABS.DEPARTMENTS);
+
+  new ctx.DepartmentsRepository().findAll();
+  const getCalls = countGetRangeCalls(sheet);
+
+  // Instancia distinta del mismo repositorio (el patrón real: el código
+  // hace `new XRepository()` en casi cada llamada) — debe reusar el cache
+  // llenado por la instancia anterior.
+  new ctx.DepartmentsRepository().findAll();
+  assert.equal(getCalls(), 0, 'una instancia nueva del mismo repositorio no debe releer el Sheet si ya hay cache');
+});
+
+test('SheetRepository: create() invalida el cache — el próximo findAll ve el registro nuevo', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+
+  assert.equal(repo.findAll().length, 1); // llena el cache con 1 fila
+  repo.create({ 'Department ID': 'DEP002', Nombre: 'Sales', 'Nombre Corto': 'Sales', Activo: true, Orden: 2 });
+
+  assert.equal(repo.findAll().length, 2, 'create() debe invalidar el cache para que el nuevo registro sea visible de inmediato');
+});
+
+test('SheetRepository: update() invalida el cache — el próximo findAll/findById ve el cambio', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+
+  repo.findAll(); // llena el cache
+  repo.update('DEP001', { Nombre: 'Executive Services (renombrado)' });
+
+  assert.equal(repo.findById('DEP001').Nombre, 'Executive Services (renombrado)', 'update() debe invalidar el cache, no servir el nombre viejo');
+});
+
+test('SheetRepository.findAll(): devuelve copias — mutar el resultado no corrompe el cache compartido', () => {
+  const ctx = createContext();
+  ctx.bootstrapTestEnvironment();
+  const repo = new ctx.DepartmentsRepository();
+
+  const first = repo.findAll();
+  first[0].Nombre = 'Mutado a mano';
+
+  const second = repo.findAll();
+  assert.equal(second[0].Nombre, 'Executive Services', 'mutar un resultado anterior no debe afectar llamadas futuras (cache por valor, no por referencia)');
+});

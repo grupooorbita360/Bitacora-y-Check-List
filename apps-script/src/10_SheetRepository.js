@@ -6,6 +6,20 @@
  * el día que se migre a Postgres/Supabase (docs/00-arquitectura-general.md)
  * solo haga falta reemplazar esta clase por una que hable SQL, manteniendo
  * la misma interfaz (findAll/findById/findWhere/create/update/softDelete).
+ *
+ * Cache por ejecución: `findAll()` cachea el resultado por nombre de hoja
+ * (no por instancia — el código crea `new XRepository()` nuevo en casi
+ * cada llamada, así que cachear en la instancia no serviría de nada).
+ * Sin esto, una sola llamada a TaskService.get()/api_getTaskDetail podía
+ * disparar docenas de lecturas completas de la misma hoja (ej.
+ * TaskPermissionService.can() se llama ~12 veces al calcular las acciones
+ * disponibles de una Task, cada una releyendo Task_Permissions —87 filas—
+ * y User_Roles desde cero) — cada lectura de Sheets tiene latencia real en
+ * Apps Script, y eso es lo que se sentía como "carga lenta". El cache se
+ * invalida en create/update para ese sheetName específico; como Apps
+ * Script arranca una ejecución nueva por request, nunca sirve datos
+ * obsoletos entre usuarios ni entre llamadas al Web App separadas — como
+ * mucho, dentro de la misma ejecución, y ahí sí se invalida correctamente.
  */
 var SheetRepository = class {
   constructor(sheetName, idColumn) {
@@ -42,15 +56,34 @@ var SheetRepository = class {
     });
   }
 
+  _invalidateCache() {
+    delete SheetRepository._cache[this.sheetName];
+  }
+
   findAll() {
+    var cached = SheetRepository._cache[this.sheetName];
+    if (cached) {
+      return cached.map(function (row) {
+        return Object.assign({}, row);
+      });
+    }
+
     var sheet = this._sheet();
     var lastRow = sheet.getLastRow();
-    if (lastRow < 2) return [];
+    if (lastRow < 2) {
+      SheetRepository._cache[this.sheetName] = [];
+      return [];
+    }
     var headers = this._headers(sheet);
     var values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
     var self = this;
-    return values.map(function (row) {
+    var rows = values.map(function (row) {
       return self._rowToObject(headers, row);
+    });
+
+    SheetRepository._cache[this.sheetName] = rows;
+    return rows.map(function (row) {
+      return Object.assign({}, row);
     });
   }
 
@@ -70,6 +103,7 @@ var SheetRepository = class {
     var sheet = this._sheet();
     var headers = this._headers(sheet);
     sheet.appendRow(this._objectToRow(headers, record));
+    this._invalidateCache();
     return record;
   }
 
@@ -81,11 +115,18 @@ var SheetRepository = class {
       throw new Error('La columna "' + this.idColumn + '" no existe en ' + this.sheetName);
     }
     var lastRow = sheet.getLastRow();
-    for (var r = 2; r <= lastRow; r++) {
-      var rowValues = sheet.getRange(r, 1, 1, headers.length).getValues()[0];
-      if (String(rowValues[idIndex]) === String(id)) {
-        var merged = Object.assign(this._rowToObject(headers, rowValues), patch);
-        sheet.getRange(r, 1, 1, headers.length).setValues([this._objectToRow(headers, merged)]);
+    if (lastRow < 2) return null;
+
+    // Una sola lectura del rango completo para ubicar la fila, en vez de
+    // un getRange().getValues() por fila (O(N) llamadas a Sheets antes) —
+    // igual de necesario que el cache de findAll() para no sentir "carga
+    // lenta" a medida que las hojas crecen con uso real.
+    var allValues = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+    for (var i = 0; i < allValues.length; i++) {
+      if (String(allValues[i][idIndex]) === String(id)) {
+        var merged = Object.assign(this._rowToObject(headers, allValues[i]), patch);
+        sheet.getRange(i + 2, 1, 1, headers.length).setValues([this._objectToRow(headers, merged)]);
+        this._invalidateCache();
         return merged;
       }
     }
@@ -122,3 +163,5 @@ var SheetRepository = class {
     }
   }
 }
+
+SheetRepository._cache = {};

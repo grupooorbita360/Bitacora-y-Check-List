@@ -18,6 +18,7 @@
   function logout() {
     setToken(null);
     App.user = null;
+    App._tasksCanBulk = undefined; // depende del rol de la sesión anterior — se vuelve a pedir con el próximo login
     navigate('login');
   }
 
@@ -59,6 +60,18 @@
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  // Todos los onclick="fn('...')" del render se arman concatenando IDs
+  // dentro de un literal JS de comillas simples. Esos IDs son siempre
+  // generados por el backend (T00001, U004, ADJ00001...) y no deberían
+  // traer comillas — pero si alguna vez uno se cargó a mano en el Sheet
+  // con un apóstrofo, esa comilla sin escapar rompe el JS del atributo:
+  // la fila se ve igual (el cursor:pointer es puramente CSS) pero el click
+  // no hace nada. escapeJsString cierra ese caso además de ser la forma
+  // correcta de interpolar cualquier valor dinámico en un onclick inline.
+  function escapeJsString(value) {
+    return String(value == null ? '' : value).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   }
 
   function formatDate(value) {

@@ -51,12 +51,12 @@ html/
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository, auth, permission, taskLifecycle, checklist.
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard.
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
-  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh.
+  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh, layout+dashboard por rol.
 scripts/
   build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
 dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
@@ -238,3 +238,28 @@ ya no cuenta filas), auto-refresco cada 20s en Dashboard/Tasks/Task Detail
 "versión" para no releer todo el detalle sin cambios) y los specs de
 Playwright guardados como tests reales (`e2e/`) — todo documentado en
 `docs/08-fase-4-hardening.md`.
+
+## 4 bugs encontrados en el navegador real (post-Fase 4)
+
+Probando el Web App desplegado (no solo el dev server local), Eduardo
+encontró y se corrigieron de raíz:
+
+1. Filas de Tasks con título no clicable — apóstrofos sin escapar en
+   `onclick="...('...')"` inline (`escapeJsString()` en
+   `Client_State.html`, aplicado en los ~25 sitios que interpolan un ID
+   dinámico dentro de JS inline).
+2. Topbar/sidebar que desaparecían al hacer scroll en el Web App real
+   (servido dentro de un iframe sandboxeado) — `position: sticky` en
+   `Styles.html`.
+3. Dashboard que solo contaba Tasks propias sin importar el rol —
+   `api_getDashboard` ahora usa el mismo alcance por rol
+   (`TaskPermissionService.canView`) que ya usa la lista de Tasks:
+   `scope: 'OWN'` para Agent, `'DEPARTMENT'` para
+   Supervisor/Manager/Director/Admin.
+4. Llamadas a Sheets redundantes que explicaban la carga lenta — cache por
+   hoja en `SheetRepository.findAll()`, `update()` reescrito para leer el
+   rango completo una sola vez en vez de fila por fila, y
+   `canBulkReassign` cacheado del lado del cliente por sesión.
+
+Detalle completo (causa raíz, corrección y tests) en
+`docs/10-fase-4-bugs-navegador-real.md`.

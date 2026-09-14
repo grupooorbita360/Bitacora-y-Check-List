@@ -107,9 +107,13 @@
   // Dashboard
   // ---------------------------------------------------------------------
   function dashboardBodyHtml(stats) {
+    // scope viene de api_getDashboard: 'OWN' para Agent (solo lo suyo),
+    // 'DEPARTMENT' para Supervisor/Manager/Director/Admin (mismo criterio
+    // de TaskPermissionService.canView que ya usa la lista de Tasks).
+    var subtitle = stats.scope === 'DEPARTMENT' ? 'Resumen de las Tasks visibles para tu rol' : 'Resumen de tus Tasks';
     return (
       '<h2 class="view-title">Dashboard</h2>' +
-      '<p class="view-subtitle">Resumen de tus Tasks</p>' +
+      '<p class="view-subtitle">' + subtitle + '</p>' +
       '<div class="stat-grid">' +
       statCard(stats.myTasks.pending, 'Pendientes') +
       statCard(stats.myTasks.inProgress, 'En Progreso') +
@@ -184,11 +188,21 @@
     return { count: tasks.length, latestUpdatedAt: latest };
   }
 
+  // canBulkReassign depende solo del rol, que no cambia dentro de la misma
+  // sesión — se pide una vez y se reutiliza. Antes se repetía en cada
+  // render de Tasks (cada cambio de filtro entraba por acá de nuevo),
+  // sumando una llamada de red evitable a cada click en un dropdown.
+  async function getCanBulkReassignCached() {
+    if (App._tasksCanBulk === undefined) {
+      App._tasksCanBulk = await Api.canBulkReassign(App.token);
+    }
+    return App._tasksCanBulk;
+  }
+
   async function renderTasksHtml() {
     var tasks = await Api.listTasks(App.token, App.taskFilters);
-    var canBulk = await Api.canBulkReassign(App.token);
+    var canBulk = await getCanBulkReassignCached();
     App._tasksVersion = computeTasksVersionFromList(tasks);
-    App._tasksCanBulk = canBulk;
     return tasksBodyHtml(tasks, canBulk);
   }
 
@@ -222,7 +236,7 @@
 
   function taskRowHtml(t) {
     return (
-      '<tr onclick="navigate(\'task-detail\', {taskId: \'' + t['Task ID'] + '\'})">' +
+      '<tr onclick="navigate(\'task-detail\', {taskId: \'' + escapeJsString(t['Task ID']) + '\'})">' +
       '<td>' + escapeHtml(t['Task Title']) + '</td>' +
       '<td>' + escapeHtml(t.Type) + '</td>' +
       '<td>' + escapeHtml(t.Owner) + '</td>' +
@@ -239,17 +253,18 @@
   function taskDetailBodyHtml(detail, taskId) {
     var t = detail.task;
     var a = detail.availableActions;
+    var safeTaskId = escapeJsString(taskId);
 
     var actionButtons = [];
-    if (a.OPEN) actionButtons.push('<button class="primary" onclick="runTransition(\'' + taskId + '\',\'OPEN\')">Abrir</button>');
-    if (a.RESUME) actionButtons.push('<button class="primary" onclick="runTransition(\'' + taskId + '\',\'RESUME\')">Reanudar</button>');
-    if (a.COMPLETE) actionButtons.push('<button class="primary" onclick="openCommentModal(\'' + taskId + '\',\'COMPLETE\',\'Completar Task\')">Completar</button>');
-    if (a.SNOOZE) actionButtons.push('<button onclick="openSnoozeModal(\'' + taskId + '\')">Posponer</button>');
-    if (a.REOPEN) actionButtons.push('<button onclick="openCommentModal(\'' + taskId + '\',\'REOPEN\',\'Reabrir Task\')">Reabrir</button>');
-    if (a.TAKE_OWNERSHIP) actionButtons.push('<button onclick="openTakeOwnershipModal(\'' + taskId + '\')">Tomar Ownership</button>');
-    if (a.REASSIGN) actionButtons.push('<button onclick="openReassignModal(\'' + taskId + '\')">Reasignar</button>');
-    if (a.CANCEL) actionButtons.push('<button class="danger" onclick="openCommentModal(\'' + taskId + '\',\'CANCEL\',\'Cancelar Task\')">Cancelar</button>');
-    if (a.REQUEST_ADJUSTMENT) actionButtons.push('<button onclick="openRequestAdjustmentModal(\'' + taskId + '\')">Pedir Ajuste</button>');
+    if (a.OPEN) actionButtons.push('<button class="primary" onclick="runTransition(\'' + safeTaskId + '\',\'OPEN\')">Abrir</button>');
+    if (a.RESUME) actionButtons.push('<button class="primary" onclick="runTransition(\'' + safeTaskId + '\',\'RESUME\')">Reanudar</button>');
+    if (a.COMPLETE) actionButtons.push('<button class="primary" onclick="openCommentModal(\'' + safeTaskId + '\',\'COMPLETE\',\'Completar Task\')">Completar</button>');
+    if (a.SNOOZE) actionButtons.push('<button onclick="openSnoozeModal(\'' + safeTaskId + '\')">Posponer</button>');
+    if (a.REOPEN) actionButtons.push('<button onclick="openCommentModal(\'' + safeTaskId + '\',\'REOPEN\',\'Reabrir Task\')">Reabrir</button>');
+    if (a.TAKE_OWNERSHIP) actionButtons.push('<button onclick="openTakeOwnershipModal(\'' + safeTaskId + '\')">Tomar Ownership</button>');
+    if (a.REASSIGN) actionButtons.push('<button onclick="openReassignModal(\'' + safeTaskId + '\')">Reasignar</button>');
+    if (a.CANCEL) actionButtons.push('<button class="danger" onclick="openCommentModal(\'' + safeTaskId + '\',\'CANCEL\',\'Cancelar Task\')">Cancelar</button>');
+    if (a.REQUEST_ADJUSTMENT) actionButtons.push('<button onclick="openRequestAdjustmentModal(\'' + safeTaskId + '\')">Pedir Ajuste</button>');
 
     return (
       '<button class="link" onclick="navigate(\'tasks\')">&larr; Volver a Tasks</button>' +
@@ -260,13 +275,13 @@
       '<div class="detail-layout">' +
       '<div class="detail-main">' +
       sectionOverview(t) +
-      sectionAdjustments(detail.pendingAdjustments, taskId, a) +
-      sectionComments(detail.history, taskId, a) +
+      sectionAdjustments(detail.pendingAdjustments, safeTaskId, a) +
+      sectionComments(detail.history, safeTaskId, a) +
       sectionHistory(detail.history) +
       '</div>' +
       '<div class="detail-side">' +
-      sectionSubtasks(detail.subtasks, taskId, a) +
-      sectionParticipants(detail.participants, taskId, a) +
+      sectionSubtasks(detail.subtasks, safeTaskId, a) +
+      sectionParticipants(detail.participants, safeTaskId, a) +
       '</div>' +
       '</div>'
     );
@@ -373,7 +388,7 @@
           '<div class="list-item">' +
           '<label style="display:flex;gap:8px;align-items:center;">' +
           '<input type="checkbox" style="width:auto" ' + (done ? 'checked disabled' : '') +
-          (!done ? ' onchange="completeSubtask(\'' + s['Subtask ID'] + '\')"' : '') + ' />' +
+          (!done ? ' onchange="completeSubtask(\'' + escapeJsString(s['Subtask ID']) + '\')"' : '') + ' />' +
           '<span style="' + (done ? 'text-decoration:line-through;color:var(--color-text-muted);' : '') + '">' + escapeHtml(s.Title) + '</span>' +
           '</label></div>'
         );
@@ -397,7 +412,7 @@
           '<div class="list-item" style="display:flex;justify-content:space-between;align-items:center;">' +
           '<span>' + escapeHtml(p['User ID']) + ' <span class="view-subtitle" style="margin:0;display:inline;">(' + escapeHtml(p['Role in Task']) + ')</span></span>' +
           (actions.REMOVE_PARTICIPANT
-            ? '<button class="link" onclick="submitRemoveParticipant(\'' + taskId + '\',\'' + p['User ID'] + '\')">Quitar</button>'
+            ? '<button class="link" onclick="submitRemoveParticipant(\'' + taskId + '\',\'' + escapeJsString(p['User ID']) + '\')">Quitar</button>'
             : '') +
           '</div>'
         );
@@ -419,14 +434,15 @@
     var items = pendingAdjustments
       .map(function (adj) {
         var canResolve = actions.APPROVE_ADJUSTMENT;
+        var safeAdjustmentId = escapeJsString(adj['Adjustment ID']);
         return (
           '<div class="list-item">' +
           '<div><strong>' + escapeHtml(adj.Type) + '</strong> — solicitado por ' + escapeHtml(adj['Requested By ID']) + '</div>' +
           '<div class="meta">' + escapeHtml(adj.Reason || '') + '</div>' +
           (canResolve
             ? '<div style="margin-top:6px;display:flex;gap:8px;">' +
-              '<button class="primary" onclick="openResolveAdjustmentModal(\'' + adj['Adjustment ID'] + '\',\'APPROVED\')">Aprobar</button>' +
-              '<button class="danger" onclick="openResolveAdjustmentModal(\'' + adj['Adjustment ID'] + '\',\'REJECTED\')">Rechazar</button>' +
+              '<button class="primary" onclick="openResolveAdjustmentModal(\'' + safeAdjustmentId + '\',\'APPROVED\')">Aprobar</button>' +
+              '<button class="danger" onclick="openResolveAdjustmentModal(\'' + safeAdjustmentId + '\',\'REJECTED\')">Rechazar</button>' +
               '</div>'
             : '') +
           '</div>'

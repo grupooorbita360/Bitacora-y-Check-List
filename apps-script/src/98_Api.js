@@ -53,37 +53,65 @@ function api_bootstrap(token) {
 
 // --- Dashboard -----------------------------------------------------------
 
+// Mismo criterio que la lista de Tasks (TaskPermissionService.canView, ya
+// alineado con las 87 reglas reales de Task_Permissions): un Agent solo ve
+// lo suyo (Owner/Participant/Shared, que es lo único que su rol puede ver
+// de por sí); Supervisor/Manager/Director/Admin ven todo lo que su rol les
+// permite ver — departamento (o más, para Director/Admin) — no solo lo que
+// ellos mismos son Owner. Antes el Dashboard SIEMPRE filtraba por Owner
+// sin importar el rol, así que un Manager/Admin veía únicamente sus
+// propias Tasks en vez del panorama de su departamento.
+function _hasBroadDashboardScope(userId) {
+  if (PermissionService.isAdmin(userId)) return true;
+  var roles = PermissionService.getRoles(userId);
+  return (
+    roles.indexOf(Config.ROLES.SUPERVISOR) !== -1 ||
+    roles.indexOf(Config.ROLES.MANAGER) !== -1 ||
+    roles.indexOf(Config.ROLES.DIRECTOR) !== -1
+  );
+}
+
+function _dashboardScopeTasksForUser(userId) {
+  var visible = new TasksRepository().findAll().filter(function (t) {
+    return t.Active !== false && TaskPermissionService.canView(userId, t);
+  });
+  if (_hasBroadDashboardScope(userId)) {
+    return { scope: 'DEPARTMENT', tasks: visible };
+  }
+  return {
+    scope: 'OWN',
+    tasks: visible.filter(function (t) {
+      return String(t['Owner ID']) === String(userId);
+    })
+  };
+}
+
 function api_getDashboard(token) {
   var userId = _resolveActingUserId(token);
-  var allTasks = new TasksRepository().findAll().filter(function (t) {
-    return t.Active !== false;
-  });
-  var visible = allTasks.filter(function (t) {
-    return TaskPermissionService.canView(userId, t);
-  });
-  var mine = visible.filter(function (t) {
-    return String(t['Owner ID']) === String(userId);
-  });
-  function countByStatus(list, status) {
-    return list.filter(function (t) {
+  var scoped = _dashboardScopeTasksForUser(userId);
+  var tasks = scoped.tasks;
+
+  function countByStatus(status) {
+    return tasks.filter(function (t) {
       return t.Status === status;
     }).length;
   }
   var today = new Date();
   today.setHours(0, 0, 0, 0);
   var openStatuses = ['PENDING', 'IN_PROGRESS', 'WAITING'];
-  var overdue = mine.filter(function (t) {
+  var overdue = tasks.filter(function (t) {
     return t['Due Date'] && new Date(t['Due Date']) < today && openStatuses.indexOf(t.Status) !== -1;
   }).length;
 
   return _toPlain({
+    scope: scoped.scope,
     myTasks: {
-      pending: countByStatus(mine, 'PENDING'),
-      inProgress: countByStatus(mine, 'IN_PROGRESS'),
-      waiting: countByStatus(mine, 'WAITING'),
+      pending: countByStatus('PENDING'),
+      inProgress: countByStatus('IN_PROGRESS'),
+      waiting: countByStatus('WAITING'),
       overdue: overdue
     },
-    visibleTotal: visible.length
+    visibleTotal: tasks.length
   });
 }
 

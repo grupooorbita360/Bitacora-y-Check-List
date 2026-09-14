@@ -112,6 +112,15 @@
     display: flex;
     flex-direction: column;
     padding: 16px 0;
+    /* sticky (no un height:100vh en .app-shell) porque Apps Script sirve
+       la página adentro de un iframe cuyo alto no siempre coincide con el
+       viewport — depender de que el layout interno "recorte" para scrollear
+       adentro de .content es frágil ahí. Con sticky, la página completa
+       puede scrollear con normalidad y el sidebar se queda fijo igual. */
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    align-self: flex-start;
   }
   .sidebar .brand { font-weight: 600; color: #fff; padding: 0 18px 18px; font-size: 15px; }
   .sidebar nav { display: flex; flex-direction: column; gap: 2px; }
@@ -128,6 +137,9 @@
   .main-column { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
   .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
     height: var(--header-height);
     background: var(--color-surface);
     border-bottom: 1px solid var(--color-border);
@@ -139,7 +151,10 @@
   .topbar .user-info { font-size: 13px; color: var(--color-text-muted); display: flex; gap: 10px; align-items: center; }
   .topbar .user-info strong { color: var(--color-text); }
 
-  .content { padding: 22px; flex: 1; overflow-y: auto; }
+  /* Sin overflow-y propio: la página completa scrollea (ver .sidebar de
+     arriba sobre por qué, dado el iframe de Apps Script), y .topbar/
+     .sidebar quedan fijos por su position:sticky. */
+  .content { padding: 22px; flex: 1; }
 
   h2.view-title { margin: 0 0 4px; font-size: 18px; }
   p.view-subtitle { margin: 0 0 18px; color: var(--color-text-muted); font-size: 13px; }
