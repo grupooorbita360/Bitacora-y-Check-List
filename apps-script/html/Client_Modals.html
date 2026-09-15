@@ -390,11 +390,10 @@
   }
 
   async function submitAddParticipant(taskId) {
-    var input = document.getElementById('new-participant-input');
-    var userId = input.value.trim();
-    if (!userId) return;
+    var select = document.getElementById('new-participant-select');
+    if (!select || !select.value) return;
     try {
-      await Api.addParticipant(App.token, taskId, userId);
+      await Api.addParticipant(App.token, taskId, select.value);
       await refreshTaskDetail(taskId);
     } catch (e) {
       showError(e);
@@ -407,6 +406,83 @@
       await refreshTaskDetail(taskId);
     } catch (e) {
       showError(e);
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Checklist: registrar una ejecución (Checklist_Runs) y, si salió con un
+  // problema, ofrecer convertirla en Task de seguimiento (los 3 endpoints
+  // ya existían desde Fase 3 — ver 44_ChecklistService.js). "OK"/"PROBLEMA"
+  // no estaban formalizados en ningún doc de este proyecto (Resultado no
+  // tiene un enum validado en el backend); se usan estos dos porque son los
+  // únicos dos casos que el resto del sistema distingue (convertRunToTask
+  // solo tiene sentido para una ejecución "con problema").
+  // ---------------------------------------------------------------------
+  function openRecordChecklistModal(checklistConfigId) {
+    var item = (App._checklistItems || []).filter(function (i) {
+      return String(i.ID) === String(checklistConfigId);
+    })[0];
+    if (!item) return;
+    var isData = item.Tipo === 'DATA';
+    openModal(
+      '<h3>' + escapeHtml(item.Actividad) + '</h3>' +
+      (item.Ayuda ? '<p class="modal-subtitle">' + escapeHtml(item.Ayuda) + '</p>' : '') +
+      '<div class="field"><label>Resultado</label><select id="modal-resultado" onchange="toggleChecklistResultFields()">' +
+      '<option value="OK">OK</option><option value="PROBLEMA">Problema</option>' +
+      '</select></div>' +
+      (isData ? '<div class="field"><label>Valor</label><input id="modal-valor" placeholder="Ingresa el valor" /></div>' : '') +
+      '<div class="field" id="checklist-comment-field" style="display:none"><label>Comentario (obligatorio si hay un problema)</label><textarea id="modal-comment" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitRecordChecklistRun(\'' + escapeJsString(checklistConfigId) + '\')">Registrar</button></div>'
+    );
+  }
+
+  function toggleChecklistResultFields() {
+    var resultado = document.getElementById('modal-resultado').value;
+    document.getElementById('checklist-comment-field').style.display = resultado === 'PROBLEMA' ? '' : 'none';
+  }
+
+  async function submitRecordChecklistRun(checklistConfigId) {
+    var resultado = document.getElementById('modal-resultado').value;
+    var valorField = document.getElementById('modal-valor');
+    var valor = valorField ? valorField.value.trim() : '';
+    var comment = document.getElementById('modal-comment').value.trim();
+    if (resultado === 'PROBLEMA' && !comment) {
+      document.getElementById('modal-error').textContent = 'Describe el problema en el comentario.';
+      return;
+    }
+    try {
+      var runId = await Api.recordChecklistRun(App.token, checklistConfigId, resultado, valor, comment);
+      closeModal();
+      if (resultado === 'PROBLEMA') {
+        offerConvertChecklistRunToTask(runId);
+      } else {
+        toast('Registrado.', 'success');
+      }
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  function offerConvertChecklistRunToTask(runId) {
+    openModal(
+      '<h3>Problema registrado</h3>' +
+      '<p class="modal-subtitle">¿Quieres convertir esta ejecución en una Task de seguimiento?</p>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">No, gracias</button>' +
+      '<button class="primary" onclick="submitConvertChecklistRunToTask(\'' + escapeJsString(runId) + '\')">Crear Task</button></div>'
+    );
+  }
+
+  async function submitConvertChecklistRunToTask(runId) {
+    try {
+      var task = await Api.convertChecklistRunToTask(App.token, runId);
+      closeModal();
+      toast('Task de seguimiento creada.', 'success');
+      navigate('task-detail', { taskId: task['Task ID'] });
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
     }
   }
 </script>

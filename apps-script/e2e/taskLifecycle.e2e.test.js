@@ -92,9 +92,9 @@ test('Tasks: subtareas (crear/completar) y participantes (agregar/quitar)', asyn
       const parentStatus = await page.getAttribute('.badge[class*="status-"]', 'class');
       assert.match(parentStatus, /status-PENDING/, 'completar la subtarea no debe completar la Task padre');
 
-      await page.fill('#new-participant-input', 'U006');
+      await page.selectOption('#new-participant-select', 'U006'); // Carla Jimenez
       await page.click('.panel:has-text("Participantes") button:has-text("Agregar")');
-      await page.waitForSelector('text=U006');
+      await page.waitForSelector('text=Carla');
       await page.click('.panel:has-text("Participantes") button:has-text("Quitar")');
       await page.waitForSelector('text=Sin participantes.');
     } finally {

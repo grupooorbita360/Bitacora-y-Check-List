@@ -22,13 +22,15 @@
     navigate('login');
   }
 
-  // ---- Router muy simple basado en hash: #/dashboard, #/tasks, #/tasks/T00001 ----
+  // ---- Router muy simple basado en hash: #/dashboard, #/tasks, #/tasks/T00001, #/checklist ----
   function navigate(name, params) {
     params = params || {};
     if (name === 'task-detail') {
       location.hash = '#/tasks/' + params.taskId;
     } else if (name === 'tasks') {
       location.hash = '#/tasks';
+    } else if (name === 'checklist') {
+      location.hash = '#/checklist';
     } else if (name === 'dashboard') {
       location.hash = '#/dashboard';
     } else if (name === 'login') {
@@ -45,6 +47,9 @@
     }
     if (parts[0] === 'tasks') {
       return { name: 'tasks' };
+    }
+    if (parts[0] === 'checklist') {
+      return { name: 'checklist' };
     }
     return { name: 'dashboard' };
   }
@@ -131,6 +136,22 @@
     PARTICIPANT_REMOVED: 'Participante quitado',
     SUBTASK_CREATED: 'Subtarea creada',
     SUBTASK_COMPLETED: 'Subtarea completada'
+  };
+
+  // Checklist_Config.Tipo (docs/01-modelo-datos.md): CHECK = marcar hecho/
+  // no hecho, DATA = capturar un dato/cifra.
+  var CHECKLIST_TYPE_LABELS = {
+    CHECK: 'Check',
+    DATA: 'Dato'
+  };
+
+  // Frecuencia sigue siendo texto libre en Checklist_Config (todavía sin
+  // catálogo cerrado — ver docs/01-modelo-datos.md): estas son solo las
+  // etiquetas de los valores ya sembrados en 95_SetupTasks.js; cualquier
+  // otro valor se muestra tal cual llega del Sheet.
+  var CHECKLIST_FREQUENCY_LABELS = {
+    DIARIA: 'Diaria',
+    SEMANAL_LUN: 'Semanal (lunes)'
   };
 
   // ---- Toasts ----

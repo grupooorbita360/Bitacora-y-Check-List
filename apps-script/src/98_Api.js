@@ -86,6 +86,16 @@ function _dashboardScopeTasksForUser(userId) {
   };
 }
 
+// Compartida por api_getDashboard (conteo de "Vencidas") y el filtro
+// overdueOnly de _visibleTasksForUser — clic en la tarjeta "Vencidas" del
+// Dashboard debe llevar a Tasks mostrando exactamente lo que esa tarjeta
+// contó, así que el criterio no puede vivir en dos lugares distintos.
+var OPEN_TASK_STATUSES = ['PENDING', 'IN_PROGRESS', 'WAITING'];
+
+function _isOverdueTask(t, today) {
+  return !!(t['Due Date'] && new Date(t['Due Date']) < today && OPEN_TASK_STATUSES.indexOf(t.Status) !== -1);
+}
+
 function api_getDashboard(token) {
   var userId = _resolveActingUserId(token);
   var scoped = _dashboardScopeTasksForUser(userId);
@@ -98,9 +108,8 @@ function api_getDashboard(token) {
   }
   var today = new Date();
   today.setHours(0, 0, 0, 0);
-  var openStatuses = ['PENDING', 'IN_PROGRESS', 'WAITING'];
   var overdue = tasks.filter(function (t) {
-    return t['Due Date'] && new Date(t['Due Date']) < today && openStatuses.indexOf(t.Status) !== -1;
+    return _isOverdueTask(t, today);
   }).length;
 
   return _toPlain({
@@ -141,6 +150,13 @@ function _visibleTasksForUser(userId, filters) {
   if (filters.mineOnly) {
     visible = visible.filter(function (t) {
       return String(t['Owner ID']) === String(userId);
+    });
+  }
+  if (filters.overdueOnly) {
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    visible = visible.filter(function (t) {
+      return _isOverdueTask(t, today);
     });
   }
   if (filters.search) {
@@ -189,13 +205,19 @@ function api_listDepartments() {
   return _toPlain(DepartmentService.listActive());
 }
 
+// Compartido por api_listAssignableUsers y api_getTaskDetail — este último
+// la incluye en su respuesta para que "Agregar Participante" pueda ofrecer
+// un selector de nombres sin pedirle un segundo round-trip al cliente
+// (antes ese campo era texto libre para el User ID a mano).
+function _assignableUsersForDepartment(departmentId) {
+  return new UsersRepository().findWhere(function (u) {
+    return u.Activo !== false && String(u['Department ID']) === String(departmentId);
+  });
+}
+
 function api_listAssignableUsers(token, departmentId) {
   _resolveActingUserId(token);
-  return _toPlain(
-    new UsersRepository().findWhere(function (u) {
-      return u.Activo !== false && String(u['Department ID']) === String(departmentId);
-    })
-  );
+  return _toPlain(_assignableUsersForDepartment(departmentId));
 }
 
 // --- Task detail + acciones ------------------------------------------------
@@ -210,7 +232,8 @@ function api_getTaskDetail(token, taskId) {
     subtasks: new TaskSubtasksRepository().findByTask(taskId),
     participants: new TaskParticipantsRepository().findByTask(taskId),
     pendingAdjustments: new TaskAdjustmentsRepository().findPendingByTask(taskId),
-    availableActions: _computeAvailableActions(userId, task)
+    availableActions: _computeAvailableActions(userId, task),
+    assignableUsers: _assignableUsersForDepartment(task.Department)
   });
 }
 

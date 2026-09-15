@@ -24,6 +24,11 @@
         schedulePolling(function () {
           return pollTaskDetail(App.route.taskId);
         });
+      } else if (App.route.name === 'checklist') {
+        // Sin polling: a diferencia de Dashboard/Tasks/Task Detail no hay
+        // estado compartido que otra sesión pueda cambiar por debajo —
+        // cada registro lo dispara el propio usuario desde este mismo tab.
+        content.innerHTML = await renderChecklistHtml();
       }
     } catch (e) {
       content.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>';
@@ -86,6 +91,7 @@
       '<nav>' +
       '<button class="' + (App.route.name === 'dashboard' ? 'active' : '') + '" onclick="navigate(\'dashboard\')"><span class="label">Dashboard</span></button>' +
       '<button class="' + (onTasks ? 'active' : '') + '" onclick="navigate(\'tasks\')"><span class="label">Tasks</span></button>' +
+      '<button class="' + (App.route.name === 'checklist' ? 'active' : '') + '" onclick="navigate(\'checklist\')"><span class="label">Checklist</span></button>' +
       '</nav>' +
       '</aside>' +
       '<div class="main-column">' +
@@ -115,10 +121,10 @@
       '<h2 class="view-title">Dashboard</h2>' +
       '<p class="view-subtitle">' + subtitle + '</p>' +
       '<div class="stat-grid">' +
-      statCard(stats.myTasks.pending, 'Pendientes') +
-      statCard(stats.myTasks.inProgress, 'En Progreso') +
-      statCard(stats.myTasks.waiting, 'En Espera') +
-      statCard(stats.myTasks.overdue, 'Vencidas', true) +
+      statCard(stats.myTasks.pending, 'Pendientes', false, "goToTasksWithFilter('PENDING')") +
+      statCard(stats.myTasks.inProgress, 'En Progreso', false, "goToTasksWithFilter('IN_PROGRESS')") +
+      statCard(stats.myTasks.waiting, 'En Espera', false, "goToTasksWithFilter('WAITING')") +
+      statCard(stats.myTasks.overdue, 'Vencidas', true, 'goToTasksWithFilter(null, true)') +
       '</div>' +
       '<button class="primary" onclick="navigate(\'tasks\')">Ver Tasks</button>'
     );
@@ -141,19 +147,32 @@
     }
   }
 
-  function statCard(value, label, overdue) {
+  // onclickCall es siempre un literal fijo escrito por este mismo archivo
+  // (nunca un valor dinámico/dato), así que interpolarlo tal cual en el
+  // atributo es seguro — igual que el resto de los onclick="navigate(...)"
+  // sin argumentos de usuario ya usados en esta vista.
+  function statCard(value, label, overdue, onclickCall) {
     return (
-      '<div class="stat-card' + (overdue ? ' overdue' : '') + '">' +
+      '<div class="stat-card' + (overdue ? ' overdue' : '') + '" onclick="' + onclickCall + '">' +
       '<div class="value">' + value + '</div>' +
       '<div class="label">' + label + '</div>' +
       '</div>'
     );
   }
 
+  // Sección 44 del prompt maestro: clic en una tarjeta del Dashboard debe
+  // llevar a Tasks con ese estado como filtro activo — mismo criterio de
+  // "Vencidas" que ya usa api_getDashboard (_isOverdueTask en 98_Api.js),
+  // para que el conteo de la tarjeta y lo que se ve en Tasks coincidan.
+  function goToTasksWithFilter(status, overdueOnly) {
+    App.taskFilters = { status: status || '', priority: '', mineOnly: false, overdueOnly: !!overdueOnly, search: '' };
+    navigate('tasks');
+  }
+
   // ---------------------------------------------------------------------
   // Tasks (lista + filtros + búsqueda)
   // ---------------------------------------------------------------------
-  App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, search: '' };
+  App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, overdueOnly: false, search: '' };
 
   function tasksBodyHtml(tasks, canBulk) {
     var rows = tasks.map(taskRowHtml).join('');
@@ -167,6 +186,9 @@
       '</select>' +
       '<label style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:12px;">' +
       '<input type="checkbox" style="width:auto" ' + (App.taskFilters.mineOnly ? 'checked' : '') + ' onchange="setTaskFilter(\'mineOnly\', this.checked)" /> Solo mías' +
+      '</label>' +
+      '<label style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted);font-size:12px;">' +
+      '<input type="checkbox" style="width:auto" ' + (App.taskFilters.overdueOnly ? 'checked' : '') + ' onchange="setTaskFilter(\'overdueOnly\', this.checked)" /> Vencidas' +
       '</label>' +
       '<input type="search" placeholder="Buscar por título… (Enter)" value="' + escapeHtml(App.taskFilters.search) + '" onchange="setTaskFilter(\'search\', this.value)" />' +
       '<div class="spacer"></div>' +
@@ -281,7 +303,7 @@
       '</div>' +
       '<div class="detail-side">' +
       sectionSubtasks(detail.subtasks, safeTaskId, a) +
-      sectionParticipants(detail.participants, safeTaskId, a) +
+      sectionParticipants(detail.participants, detail.assignableUsers, safeTaskId, a) +
       '</div>' +
       '</div>'
     );
@@ -405,12 +427,24 @@
     );
   }
 
-  function sectionParticipants(participants, taskId, actions) {
+  // Nombre a mostrar para un User ID — nunca el ID crudo si tenemos el
+  // nombre a mano (assignableUsers, ya filtrado por el departamento de la
+  // Task). Si un participante ya no está en esa lista (p. ej. se
+  // desactivó, o cambió de departamento después de agregado) se muestra
+  // el ID tal cual, en vez de romper el render.
+  function userDisplayName(userId, assignableUsers) {
+    var match = assignableUsers.filter(function (u) {
+      return String(u['User ID']) === String(userId);
+    })[0];
+    return match ? match['Nombre Corto'] : userId;
+  }
+
+  function sectionParticipants(participants, assignableUsers, taskId, actions) {
     var items = participants
       .map(function (p) {
         return (
           '<div class="list-item" style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<span>' + escapeHtml(p['User ID']) + ' <span class="view-subtitle" style="margin:0;display:inline;">(' + escapeHtml(p['Role in Task']) + ')</span></span>' +
+          '<span>' + escapeHtml(userDisplayName(p['User ID'], assignableUsers)) + ' <span class="view-subtitle" style="margin:0;display:inline;">(' + escapeHtml(p['Role in Task']) + ')</span></span>' +
           (actions.REMOVE_PARTICIPANT
             ? '<button class="link" onclick="submitRemoveParticipant(\'' + taskId + '\',\'' + escapeJsString(p['User ID']) + '\')">Quitar</button>'
             : '') +
@@ -418,12 +452,23 @@
         );
       })
       .join('');
+    // Nunca ofrecer de nuevo a alguien que ya es participante activo —
+    // agregarlo otra vez no falla (TaskService.addParticipant lo trata
+    // como no-op), pero confundiría verlo listado dos veces en el selector.
+    var currentParticipantIds = participants.map(function (p) {
+      return String(p['User ID']);
+    });
+    var candidates = assignableUsers.filter(function (u) {
+      return currentParticipantIds.indexOf(String(u['User ID'])) === -1;
+    });
     return (
       '<div class="panel"><h3>Participantes</h3>' +
       (items || '<p class="view-subtitle" style="margin:0;">Sin participantes.</p>') +
       (actions.ADD_PARTICIPANT
-        ? '<div class="inline-form"><input id="new-participant-input" placeholder="User ID (ej. U006)" />' +
-          '<button onclick="submitAddParticipant(\'' + taskId + '\')">Agregar</button></div>'
+        ? (candidates.length
+            ? '<div class="inline-form"><select id="new-participant-select">' + userOptions(candidates) + '</select>' +
+              '<button onclick="submitAddParticipant(\'' + taskId + '\')">Agregar</button></div>'
+            : '<p class="view-subtitle" style="margin:8px 0 0;">No hay más usuarios del departamento para agregar.</p>')
         : '') +
       '</div>'
     );
@@ -450,5 +495,49 @@
       })
       .join('');
     return '<div class="panel"><h3>Ajustes pendientes</h3>' + items + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Checklist (Checklist_Config + Checklist_Runs, sección 38.1 del prompt
+  // maestro — backend de Fase 3, vista agregada ahora en Fase 4). Cada fila
+  // es una actividad activa del departamento del usuario; "Registrar"
+  // abre el modal para dejar una ejecución (Checklist_Runs) con su
+  // resultado, y si el resultado es un problema ofrece convertirla en Task
+  // de seguimiento (System Origin = CHECKLIST) — el mismo flujo que ya
+  // describe el comentario de ChecklistService.convertRunToTask.
+  // ---------------------------------------------------------------------
+  function checklistItemRowHtml(item) {
+    var ayuda = item.Ayuda
+      ? '<details class="collapsible" style="margin-top:4px;"><summary>Ayuda</summary>' +
+        '<p class="view-subtitle" style="margin:4px 0 0;">' + escapeHtml(item.Ayuda) + '</p></details>'
+      : '';
+    return (
+      '<tr>' +
+      '<td><strong>' + escapeHtml(item.Actividad) + '</strong>' + ayuda + '</td>' +
+      '<td><span class="badge type-' + item.Tipo + '">' + (CHECKLIST_TYPE_LABELS[item.Tipo] || item.Tipo) + '</span></td>' +
+      '<td>' + (CHECKLIST_FREQUENCY_LABELS[item.Frecuencia] || item.Frecuencia) + '</td>' +
+      '<td><span class="badge priority-' + item.Prioridad + '">' + item.Prioridad + '</span></td>' +
+      '<td><button onclick="openRecordChecklistModal(\'' + escapeJsString(item.ID) + '\')">Registrar</button></td>' +
+      '</tr>'
+    );
+  }
+
+  function checklistBodyHtml(items) {
+    var rows = items.map(checklistItemRowHtml).join('');
+    return (
+      '<h2 class="view-title">Checklist</h2>' +
+      '<p class="view-subtitle">' + items.length + ' actividad(es) activa(s) en tu departamento</p>' +
+      (items.length
+        ? '<table class="tasks-table"><thead><tr><th>Actividad</th><th>Tipo</th><th>Frecuencia</th><th>Prioridad</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<div class="empty-state">No hay actividades de checklist configuradas para tu departamento.</div>')
+    );
+  }
+
+  async function renderChecklistHtml() {
+    var items = await Api.listChecklist(App.token, App.user['Department ID']);
+    // Cacheado para que el modal de "Registrar" (Client_Modals.html) pueda
+    // leer Tipo/Actividad/Ayuda sin pedirlas de nuevo al backend.
+    App._checklistItems = items;
+    return checklistBodyHtml(items);
   }
 </script>

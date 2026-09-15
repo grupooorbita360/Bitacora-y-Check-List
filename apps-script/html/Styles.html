@@ -167,7 +167,9 @@
     border-radius: var(--radius);
     padding: 16px 20px;
     min-width: 140px;
+    cursor: pointer;
   }
+  .stat-card:hover { border-color: var(--color-primary); }
   .stat-card .value { font-size: 26px; font-weight: 600; }
   .stat-card .label { color: var(--color-text-muted); font-size: 12px; margin-top: 2px; }
   .stat-card.overdue .value { color: var(--color-danger); }
@@ -195,6 +197,8 @@
   .badge.priority-P1 { background: #fbe6e5; color: var(--color-danger); }
   .badge.priority-P2 { background: #fdf1da; color: var(--color-warning); }
   .badge.priority-P3 { background: #eef0f4; color: #4b5262; }
+  .badge.type-CHECK { background: #e2ecff; color: var(--color-primary); }
+  .badge.type-DATA { background: #eef0f4; color: #4b5262; }
 
   /* ---------- Task detail ---------- */
   .detail-layout { display: flex; gap: 20px; align-items: flex-start; }

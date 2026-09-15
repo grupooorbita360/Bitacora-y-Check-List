@@ -45,18 +45,18 @@ html/
   Styles.html                 CSS (desktop-first).
   Client_Api.html             callServer() — google.script.run en prod, fetch en el dev server.
   Client_State.html           Estado de la app, router por hash, toasts, formatos.
-  Client_Views.html           Render de Login/Dashboard/Tasks/Task Detail.
+  Client_Views.html           Render de Login/Dashboard/Tasks/Task Detail/Checklist.
   Client_Modals.html          Modales de acción (Nueva Task, Reasignar, Ajustes, etc.).
   Client_Main.html            Bootstrap de la app (login + primera render).
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard.
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api).
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
-  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh, layout+dashboard por rol.
+  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist.
 scripts/
   build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
 dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
@@ -211,6 +211,10 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
   prefijo `html/` en el nombre, `Index`/`Styles`/etc. no se encontraban) —
   corregido de raíz con `scripts/build-gas.js` (artefacto plano
   `dist-gas/`), no con un parche de nombres. Ver `docs/09-deploy-clasp.md`.
+- Vista de Checklist (Login/Layout/Navigation/Dashboard/Tasks/Task
+  detail/Modals eran las vistas pedidas para Fase 4; Checklist se agregó
+  después, reusando los 3 endpoints de Fase 3 sin cambios de backend). Ver
+  `docs/11-participantes-dashboard-checklist.md`.
 
 ## Qué falta
 
@@ -220,10 +224,11 @@ temporal), en vez de depender de un Web App desplegado. La vía SELECT_PIN
   `TaskService` invoca todavía: `CREATE`, `EDIT`, `ASSIGN`, `VIEW_HISTORY`,
   `VIEW_SUBTASKS` (la creación se sigue gateando solo por `Task_Config`,
   más específico por Task Type). Ver `docs/06-fase-3-decisiones.md`.
-- Vista de Checklist en el frontend (el backend de Fase 3 ya existe:
-  `api_listChecklist`/`api_recordChecklistRun`/
-  `api_convertChecklistRunToTask`) — no estaba en la lista de vistas
-  pedida para Fase 4, ver `docs/07-fase-4-decisiones.md`.
+- Historial de ejecuciones de Checklist (qué se registró hoy/ayer, estado
+  "ya hecho" por actividad) y la doble validación por "SUPs requeridos" —
+  ninguno de los 3 endpoints existentes lo soporta; ver
+  `docs/11-participantes-dashboard-checklist.md` → "Qué queda
+  deliberadamente fuera de esta vista".
 - Limitación conocida y aceptada del auto-refresco: un poll puede
   reemplazar un input a medio escribir (buscador, comentario sin enviar)
   si justo en ese momento hay un cambio que refrescar — ver
@@ -263,3 +268,27 @@ encontró y se corrigieron de raíz:
 
 Detalle completo (causa raíz, corrección y tests) en
 `docs/10-fase-4-bugs-navegador-real.md`.
+
+## Selector de Participantes, tarjetas del Dashboard clicables y vista de Checklist
+
+Dos ajustes de UX más encontrados en el navegador real, más la vista de
+Checklist que quedaba pendiente:
+
+1. "Agregar Participante" en Task Detail pasó de un `<input>` de User ID a
+   mano a un `<select>` con nombres (`api_listAssignableUsers`, ya
+   incluida en `api_getTaskDetail` como `assignableUsers`) — el User ID
+   viaja por debajo, nunca lo escribe ni lo ve el usuario.
+2. Las tarjetas del Dashboard (Pendientes/En Progreso/En Espera/Vencidas)
+   ahora navegan a Tasks con ese estado como filtro activo al hacer clic
+   — incluye un filtro nuevo `overdueOnly` en el backend (`98_Api.js`,
+   compartido con el conteo de "Vencidas" del propio Dashboard) y un
+   checkbox "Vencidas" en el toolbar de Tasks.
+3. **Checklist** tiene vista propia: lista de actividades activas del
+   departamento, modal para registrar una ejecución (Resultado, Valor si
+   aplica, Comentario obligatorio si hay un problema) y, si el resultado
+   es un problema, oferta inmediata de convertirla en una Task de
+   seguimiento — sin cambios al backend de Fase 3, solo consumiendo los 3
+   endpoints que ya existían.
+
+Detalle completo (incluye qué quedó deliberadamente fuera de la vista de
+Checklist y por qué) en `docs/11-participantes-dashboard-checklist.md`.
