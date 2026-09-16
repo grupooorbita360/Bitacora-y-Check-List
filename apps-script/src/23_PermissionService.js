@@ -21,6 +21,21 @@ var PermissionService = {
     return this.hasRole(userId, Config.ROLES.ADMIN);
   },
 
+  // Primitivas de jerarquía de rol reutilizadas fuera del motor de Tasks
+  // (ej. ChecklistService.convertRunToTask, sección 36 del prompt maestro:
+  // convertir un Checklist con problema en Task de seguimiento es acción
+  // de Supervisor, no de Agent) — ver docs/14-checklist-convert-role.md.
+  isManagerOrAbove: function (userId) {
+    if (this.isAdmin(userId)) return true;
+    var roles = this.getRoles(userId);
+    return roles.indexOf(Config.ROLES.MANAGER) !== -1 || roles.indexOf(Config.ROLES.DIRECTOR) !== -1;
+  },
+
+  isSupervisorOrAbove: function (userId) {
+    if (this.isManagerOrAbove(userId)) return true;
+    return this.hasRole(userId, Config.ROLES.SUPERVISOR);
+  },
+
   canAccessDepartment: function (userId, departmentId) {
     if (this.isAdmin(userId)) return true;
     var user = new UsersRepository().findById(userId);

@@ -201,21 +201,22 @@ test('api_listTasks: una Task MANAGEMENT no aparece en la lista de un Supervisor
 
 // --- El flujo de Checklist -> Supervisión sigue funcionando para quien SÍ tiene rol ---
 
-test('Checklist con problema -> Task de Supervisión: Marta (Supervisor) sí puede verla y actuar; Ana (Agent, Owner) no', () => {
+test('Checklist con problema -> Task de Supervisión: Marta (Supervisor, quien convierte) la ve y actúa; Ana (Agent, Owner) no', () => {
   const ctx = setUp();
-  ctx.__setActiveUserEmail('eduardo.lopez@example.test');
-  const runId = ctx.api_recordChecklistRun(null, 'CL02', 'PROBLEMA', '150.00', 'Faltante en caja.');
-  // Ana (Agent) convierte su propio reporte a Task — ownerId por defecto es
-  // quien convierte, exactamente el caso de uso que motivó el enforcement.
   const anaToken = ctx.AuthService.loginWithPin('a.torres', '1234');
-  const task = ctx.api_convertChecklistRunToTask(anaToken, runId);
+  const runId = ctx.api_recordChecklistRun(anaToken, 'CL02', 'PROBLEMA', '150.00', 'Faltante en caja.');
+
+  // Ana solo reporta — convertir es acción de Marta, su Supervisor (ver
+  // docs/14-checklist-convert-role.md). Se asigna a Ana como Owner para
+  // que le llegue la Task de seguimiento, aunque quien la crea es Marta.
+  const martaToken = ctx.AuthService.loginWithPin('m.moreno', '1234');
+  const task = ctx.api_convertChecklistRunToTask(martaToken, runId, { ownerId: 'U004' });
   assert.equal(task.Visibility, 'SUPERVISION');
 
-  // Ana ya no puede ver su propia Task de seguimiento.
+  // Ana es Owner pero no puede ver su propia Task de seguimiento.
   assert.throws(() => ctx.api_getTaskDetail(anaToken, task['Task ID']), /No tienes permiso para ver esta Task/);
 
-  // Marta (su Supervisor) sí puede verla y comentar.
-  const martaToken = ctx.AuthService.loginWithPin('m.moreno', '1234');
+  // Marta sí puede verla y comentar.
   const detail = ctx.api_getTaskDetail(martaToken, task['Task ID']);
   assert.equal(detail.task['Task ID'], task['Task ID']);
   assert.doesNotThrow(() => ctx.api_addComment(martaToken, task['Task ID'], 'Reviso este caso.'));

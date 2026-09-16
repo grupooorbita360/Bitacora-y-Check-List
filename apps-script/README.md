@@ -51,12 +51,12 @@ html/
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM), visibilityEnforcement (Visibility como barrera real).
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM), visibilityEnforcement (Visibility como barrera real), checklistConvertRole (convertir es acción de Supervisor+).
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
-  *.e2e.test.js              Specs de Playwright (node:test): auth (incluye logout), lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist, pestañas de Tasks por rol + desglose por persona.
+  *.e2e.test.js              Specs de Playwright (node:test): auth (incluye logout), lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist, pestañas de Tasks por rol + desglose por persona, checklistConvertRole (oferta de convertir solo a Supervisor+).
 scripts/
   build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
 dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
@@ -337,3 +337,19 @@ funcionando extremo a extremo para quien sí tiene rol suficiente.
 
 Detalle completo (la regla exacta, por qué se resuelve en un solo lugar,
 y qué corrigió en `docs/12`) en `docs/13-visibility-enforcement.md`.
+
+## "+Convertir en Task" pasa a ser acción de Supervisor (sección 36)
+
+El enforcement de Visibility destapó una inconsistencia: un Agent podía
+convertir su propio Checklist con problema y quedar como Owner de una
+Task `SUPERVISION` que él mismo ya no podía ver (correcto, por el punto
+anterior) — quedaba huérfana hasta que un Supervisor la encontrara.
+`ChecklistService.convertRunToTask` ahora exige Supervisor/Manager/
+Director/Admin (`PermissionService.isSupervisorOrAbove`, nueva primitiva
+reutilizable); `recordRun` (el reporte en sí) sigue abierto a cualquier
+rol — el Agent reporta, el Supervisor convierte. El botón de conversión
+también se oculta en el cliente para quien no califica.
+
+Detalle completo (incluye qué se dejó deliberadamente fuera: un
+mecanismo de descubrimiento de problemas todavía no convertidos) en
+`docs/14-checklist-convert-role.md`.

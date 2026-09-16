@@ -193,14 +193,11 @@
   // ---------------------------------------------------------------------
   App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, overdueOnly: false, search: '' };
 
-  // Los strings de rol son los mismos valores de Config.ROLES (00_Config.js
-  // del backend) — el cliente no puede importar ese namespace (corre en el
-  // navegador, Config es solo del lado de Apps Script), así que se repiten
-  // acá tal cual llegan en App.user.roles.
+  // userIsManagerOrAbove()/userIsSupervisorOrAbove() (Client_State.html)
+  // resuelven la jerarquía de rol sobre App.user.roles.
   function taskTabsForUser() {
-    var roles = (App.user && App.user.roles) || [];
-    var isManagerTier = roles.indexOf('Manager') !== -1 || roles.indexOf('Director') !== -1 || roles.indexOf('Admin') !== -1;
-    var isSupervisorTier = isManagerTier || roles.indexOf('Supervisor') !== -1;
+    var isManagerTier = userIsManagerOrAbove();
+    var isSupervisorTier = userIsSupervisorOrAbove();
     var tabs = [
       { key: 'MINE', label: 'Mis Tasks' },
       { key: 'TEAM', label: isManagerTier ? 'Departamento' : 'Equipo' },

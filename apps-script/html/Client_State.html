@@ -68,6 +68,23 @@
     render();
   });
 
+  // ---- Jerarquía de rol (App.user.roles trae los mismos strings que
+  // Config.ROLES del backend — el cliente no puede importar ese
+  // namespace, corre en el navegador). Compartido por las pestañas de
+  // Tasks (Client_Views.html) y por el gate de "+Convertir en Task" del
+  // Checklist (Client_Modals.html — docs/14-checklist-convert-role.md),
+  // para no repetir la lista de roles en dos lugares. ----
+  function userIsManagerOrAbove() {
+    var roles = (App.user && App.user.roles) || [];
+    return roles.indexOf('Manager') !== -1 || roles.indexOf('Director') !== -1 || roles.indexOf('Admin') !== -1;
+  }
+
+  function userIsSupervisorOrAbove() {
+    if (userIsManagerOrAbove()) return true;
+    var roles = (App.user && App.user.roles) || [];
+    return roles.indexOf('Supervisor') !== -1;
+  }
+
   // ---- Utilidades de formato/escape ----
   function escapeHtml(value) {
     return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {

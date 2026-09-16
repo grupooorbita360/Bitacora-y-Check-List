@@ -455,8 +455,12 @@
     try {
       var runId = await Api.recordChecklistRun(App.token, checklistConfigId, resultado, valor, comment);
       closeModal();
-      if (resultado === 'PROBLEMA') {
+      if (resultado === 'PROBLEMA' && userIsSupervisorOrAbove()) {
+        // Convertir es acción de Supervisor+ (docs/14-checklist-convert-role.md)
+        // — un Agent solo reporta, así que ni se le ofrece el modal.
         offerConvertChecklistRunToTask(runId);
+      } else if (resultado === 'PROBLEMA') {
+        toast('Problema registrado. Un Supervisor deberá convertirlo en Task de seguimiento.', 'success');
       } else {
         toast('Registrado.', 'success');
       }
