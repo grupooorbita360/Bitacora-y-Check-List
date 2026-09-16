@@ -19,7 +19,15 @@
     setToken(null);
     App.user = null;
     App._tasksCanBulk = undefined; // depende del rol de la sesión anterior — se vuelve a pedir con el próximo login
-    navigate('login');
+    App.activeTaskTab = undefined; // ídem: las pestañas disponibles dependen del rol
+    App.teamOwnerFilter = null;
+    // navigate('login') por sí solo dejaba App.loginState con lo que fuera
+    // que tenía antes de loguearse (típicamente {mode:'LOADING'}, nunca
+    // actualizado después de un login exitoso) y solo volvía a pintar esa
+    // pantalla vieja — la vista quedaba congelada en "Verificando
+    // sesión…" hasta refrescar la página a mano. bootApp() sí vuelve a
+    // correr la detección DIRECT/SELECT_PIN/DENIED desde cero.
+    bootApp();
   }
 
   // ---- Router muy simple basado en hash: #/dashboard, #/tasks, #/tasks/T00001, #/checklist ----

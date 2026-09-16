@@ -76,7 +76,19 @@ function _dashboardScopeTasksForUser(userId) {
     return t.Active !== false && TaskPermissionService.canView(userId, t);
   });
   if (_hasBroadDashboardScope(userId)) {
-    return { scope: 'DEPARTMENT', tasks: visible };
+    // Se excluyen las Tasks con Visibility Supervisión/Management del
+    // panorama general — igual que hace la pestaña "Equipo"/"Departamento"
+    // de Tasks (docs/12-tabs-tasks-logout.md) — para que el número de cada
+    // tarjeta y lo que aparece al hacer clic en ella siempre coincidan.
+    // Esas Tasks tienen su propio conteo implícito en la pestaña
+    // "Supervisión"/"Management" en vez de mezclarse en los conteos
+    // genéricos de Pendientes/En Progreso/En Espera/Vencidas.
+    return {
+      scope: 'DEPARTMENT',
+      tasks: visible.filter(function (t) {
+        return !_isSupervisionOrManagementVisibility(t);
+      })
+    };
   }
   return {
     scope: 'OWN',
@@ -91,9 +103,21 @@ function _dashboardScopeTasksForUser(userId) {
 // Dashboard debe llevar a Tasks mostrando exactamente lo que esa tarjeta
 // contó, así que el criterio no puede vivir en dos lugares distintos.
 var OPEN_TASK_STATUSES = ['PENDING', 'IN_PROGRESS', 'WAITING'];
+var CLOSED_TASK_STATUSES = ['COMPLETED', 'CANCELLED'];
 
 function _isOverdueTask(t, today) {
   return !!(t['Due Date'] && new Date(t['Due Date']) < today && OPEN_TASK_STATUSES.indexOf(t.Status) !== -1);
+}
+
+// Visibility (OPERATIONAL/SUPERVISION/MANAGEMENT/RESTRICTED, ver
+// docs/02-reglas-negocio.md) todavía no está enforced dentro de
+// TaskPermissionService.canView — solo Operational Scope lo está, vía las
+// filas reales de Task_Permissions. Este helper NO es un control de
+// acceso: es un filtro de presentación para las pestañas "Supervisión"/
+// "Management" de Tasks (docs/12-tabs-tasks-logout.md), que solo reordena
+// lo que canView ya permitió ver — nunca amplía el acceso.
+function _isSupervisionOrManagementVisibility(t) {
+  return t.Visibility === Config.TASK_VISIBILITY.SUPERVISION || t.Visibility === Config.TASK_VISIBILITY.MANAGEMENT;
 }
 
 function api_getDashboard(token) {
@@ -157,6 +181,42 @@ function _visibleTasksForUser(userId, filters) {
     today.setHours(0, 0, 0, 0);
     visible = visible.filter(function (t) {
       return _isOverdueTask(t, today);
+    });
+  }
+  // Pestañas de Tasks (sección 44 del prompt maestro — docs/12-tabs-tasks-logout.md):
+  // cada tab es una capa de filtrado ADICIONAL sobre lo que canView ya
+  // permitió ver arriba, nunca una ampliación de acceso.
+  if (filters.tab === 'MINE') {
+    visible = visible.filter(function (t) {
+      return String(t['Owner ID']) === String(userId) && CLOSED_TASK_STATUSES.indexOf(t.Status) === -1;
+    });
+  } else if (filters.tab === 'TEAM') {
+    // "Equipo"/"Departamento" — sin excluir al propio usuario: si es Owner
+    // de alguna Task del equipo (poco común pero posible, ej. un Manager
+    // que convirtió un Checklist con problema a su propio nombre) debe
+    // seguir viéndola en el desglose por persona, no perderla. Sí excluye
+    // Visibility Supervisión/Management (van agrupadas en sus propias
+    // pestañas, no mezcladas aquí — el mismo criterio que ya usa
+    // _dashboardScopeTasksForUser para que la tarjeta del Dashboard y esta
+    // pestaña siempre cuenten exactamente lo mismo).
+    visible = visible.filter(function (t) {
+      return !_isSupervisionOrManagementVisibility(t) && CLOSED_TASK_STATUSES.indexOf(t.Status) === -1;
+    });
+  } else if (filters.tab === 'WAITING') {
+    visible = visible.filter(function (t) {
+      return t.Status === 'WAITING';
+    });
+  } else if (filters.tab === 'DONE') {
+    visible = visible.filter(function (t) {
+      return CLOSED_TASK_STATUSES.indexOf(t.Status) !== -1;
+    });
+  } else if (filters.tab === 'SUPERVISION') {
+    visible = visible.filter(function (t) {
+      return t.Visibility === Config.TASK_VISIBILITY.SUPERVISION;
+    });
+  } else if (filters.tab === 'MANAGEMENT') {
+    visible = visible.filter(function (t) {
+      return t.Visibility === Config.TASK_VISIBILITY.MANAGEMENT;
     });
   }
   if (filters.search) {

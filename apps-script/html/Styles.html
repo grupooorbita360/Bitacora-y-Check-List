@@ -175,6 +175,31 @@
   .stat-card.overdue .value { color: var(--color-danger); }
 
   /* ---------- Tasks list ---------- */
+  .task-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 16px; border-bottom: 1px solid var(--color-border); }
+  .task-tabs button {
+    all: unset;
+    cursor: pointer;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--color-text-muted);
+    border-bottom: 2px solid transparent;
+  }
+  .task-tabs button:hover { color: var(--color-text); }
+  .task-tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+  /* Desglose por persona (pestaña Equipo/Departamento) — chips clicables,
+     "Todos" + una por cada Owner con Tasks en el set actual del tab. */
+  .team-breakdown { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .team-breakdown .chip {
+    border-radius: 100px;
+    padding: 5px 12px;
+    font-size: 12px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+  }
+  .team-breakdown .chip.active { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+
   .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar .spacer { flex: 1; }
   .toolbar input[type="search"] { max-width: 240px; }

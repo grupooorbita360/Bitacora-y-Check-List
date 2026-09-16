@@ -117,14 +117,20 @@
     // 'DEPARTMENT' para Supervisor/Manager/Director/Admin (mismo criterio
     // de TaskPermissionService.canView que ya usa la lista de Tasks).
     var subtitle = stats.scope === 'DEPARTMENT' ? 'Resumen de las Tasks visibles para tu rol' : 'Resumen de tus Tasks';
+    // El clic en una tarjeta debe caer en la misma pestaña de Tasks cuyo
+    // alcance coincide con lo que esa tarjeta contó — si no, el número
+    // clicado y lo que aparece en Tasks no coincidirían (scope OWN -> "Mis
+    // Tasks"; DEPARTMENT -> "Equipo"/"Departamento", mismo tab TEAM para
+    // ambos, solo cambia la etiqueta según el rol — ver taskTabsForUser()).
+    var teamTab = stats.scope === 'DEPARTMENT' ? 'TEAM' : 'MINE';
     return (
       '<h2 class="view-title">Dashboard</h2>' +
       '<p class="view-subtitle">' + subtitle + '</p>' +
       '<div class="stat-grid">' +
-      statCard(stats.myTasks.pending, 'Pendientes', false, "goToTasksWithFilter('PENDING')") +
-      statCard(stats.myTasks.inProgress, 'En Progreso', false, "goToTasksWithFilter('IN_PROGRESS')") +
-      statCard(stats.myTasks.waiting, 'En Espera', false, "goToTasksWithFilter('WAITING')") +
-      statCard(stats.myTasks.overdue, 'Vencidas', true, 'goToTasksWithFilter(null, true)') +
+      statCard(stats.myTasks.pending, 'Pendientes', false, "goToTasksWithFilter('" + teamTab + "', 'PENDING')") +
+      statCard(stats.myTasks.inProgress, 'En Progreso', false, "goToTasksWithFilter('" + teamTab + "', 'IN_PROGRESS')") +
+      statCard(stats.myTasks.waiting, 'En Espera', false, "goToTasksWithFilter('" + teamTab + "', 'WAITING')") +
+      statCard(stats.myTasks.overdue, 'Vencidas', true, "goToTasksWithFilter('" + teamTab + "', null, true)") +
       '</div>' +
       '<button class="primary" onclick="navigate(\'tasks\')">Ver Tasks</button>'
     );
@@ -161,18 +167,123 @@
   }
 
   // Sección 44 del prompt maestro: clic en una tarjeta del Dashboard debe
-  // llevar a Tasks con ese estado como filtro activo — mismo criterio de
+  // llevar a Tasks con ese estado como filtro activo, en la misma pestaña
+  // cuyo alcance corresponde al scope de esa tarjeta (tab viene ya resuelto
+  // desde dashboardBodyHtml según stats.scope) — mismo criterio de
   // "Vencidas" que ya usa api_getDashboard (_isOverdueTask en 98_Api.js),
   // para que el conteo de la tarjeta y lo que se ve en Tasks coincidan.
-  function goToTasksWithFilter(status, overdueOnly) {
+  function goToTasksWithFilter(tab, status, overdueOnly) {
+    App.activeTaskTab = tab;
+    App.teamOwnerFilter = null;
     App.taskFilters = { status: status || '', priority: '', mineOnly: false, overdueOnly: !!overdueOnly, search: '' };
     navigate('tasks');
   }
 
   // ---------------------------------------------------------------------
-  // Tasks (lista + filtros + búsqueda)
+  // Tasks (pestañas por rol + lista + filtros + búsqueda)
+  //
+  // Sección 44 del prompt maestro (texto literal no disponible en esta
+  // sesión — ver docs/07-fase-4-decisiones.md sobre esa limitación, y
+  // docs/12-tabs-tasks-logout.md para el detalle de esta implementación):
+  // Agent ve "Mis Tasks/Equipo/En espera/Completadas"; Supervisor agrega
+  // "Supervisión"; Manager/Director agregan "Departamento" (en vez de
+  // "Equipo") y "Management". Cada pestaña es un filtro server-side
+  // (filters.tab en 98_Api.js) ADICIONAL sobre lo que TaskPermissionService
+  // ya permite ver — nunca amplía el acceso, solo lo organiza.
   // ---------------------------------------------------------------------
   App.taskFilters = App.taskFilters || { status: '', priority: '', mineOnly: false, overdueOnly: false, search: '' };
+
+  // Los strings de rol son los mismos valores de Config.ROLES (00_Config.js
+  // del backend) — el cliente no puede importar ese namespace (corre en el
+  // navegador, Config es solo del lado de Apps Script), así que se repiten
+  // acá tal cual llegan en App.user.roles.
+  function taskTabsForUser() {
+    var roles = (App.user && App.user.roles) || [];
+    var isManagerTier = roles.indexOf('Manager') !== -1 || roles.indexOf('Director') !== -1 || roles.indexOf('Admin') !== -1;
+    var isSupervisorTier = isManagerTier || roles.indexOf('Supervisor') !== -1;
+    var tabs = [
+      { key: 'MINE', label: 'Mis Tasks' },
+      { key: 'TEAM', label: isManagerTier ? 'Departamento' : 'Equipo' },
+      { key: 'WAITING', label: 'En espera' },
+      { key: 'DONE', label: 'Completadas' }
+    ];
+    if (isSupervisorTier) tabs.push({ key: 'SUPERVISION', label: 'Supervisión' });
+    if (isManagerTier) tabs.push({ key: 'MANAGEMENT', label: 'Management' });
+    return tabs;
+  }
+
+  // Si la pestaña activa no es válida para el rol actual (primera visita,
+  // o el usuario cambió de sesión sin pasar por logout) cae a "Mis Tasks".
+  function activeTaskTabOrDefault() {
+    var validKeys = taskTabsForUser().map(function (t) {
+      return t.key;
+    });
+    if (!App.activeTaskTab || validKeys.indexOf(App.activeTaskTab) === -1) {
+      App.activeTaskTab = 'MINE';
+    }
+    return App.activeTaskTab;
+  }
+
+  function setActiveTaskTab(tabKey) {
+    App.activeTaskTab = tabKey;
+    App.teamOwnerFilter = null; // el desglose por persona es específico de la pestaña anterior
+    render();
+  }
+
+  // tabKey siempre es un literal fijo de taskTabsForUser() (nunca un dato
+  // dinámico), igual que el resto de los onclick sin argumentos de usuario.
+  function taskTabsBarHtml(tabs, activeTab) {
+    var buttons = tabs
+      .map(function (t) {
+        return '<button class="' + (t.key === activeTab ? 'active' : '') + '" onclick="setActiveTaskTab(\'' + t.key + '\')">' + t.label + '</button>';
+      })
+      .join('');
+    return '<div class="task-tabs">' + buttons + '</div>';
+  }
+
+  // Desglose por persona (pestaña Equipo/Departamento): cuenta Tasks por
+  // Owner sobre el set YA filtrado por tab en el servidor. 'Owner' (nombre)
+  // ya viene en cada Task junto a 'Owner ID' — igual que usa taskRowHtml
+  // para la columna Owner — así que no hace falta resolverlo aparte.
+  function computeOwnerBreakdown(tasks) {
+    var counts = {};
+    var names = {};
+    tasks.forEach(function (t) {
+      var id = t['Owner ID'];
+      counts[id] = (counts[id] || 0) + 1;
+      names[id] = t.Owner;
+    });
+    return Object.keys(counts)
+      .map(function (id) {
+        return { ownerId: id, name: names[id] || id, count: counts[id] };
+      })
+      .sort(function (a, b) {
+        return b.count - a.count;
+      });
+  }
+
+  function setTeamOwnerFilter(ownerId) {
+    App.teamOwnerFilter = ownerId || null;
+    render();
+  }
+
+  function teamBreakdownHtml(breakdown, activeOwnerId) {
+    if (!breakdown.length) return '';
+    var total = breakdown.reduce(function (sum, b) {
+      return sum + b.count;
+    }, 0);
+    var chips = '<button class="chip' + (activeOwnerId ? '' : ' active') + '" onclick="setTeamOwnerFilter(null)">Todos (' + total + ')</button>';
+    chips += breakdown
+      .map(function (b) {
+        var active = String(activeOwnerId) === String(b.ownerId);
+        return (
+          '<button class="chip' + (active ? ' active' : '') + '" onclick="setTeamOwnerFilter(\'' + escapeJsString(b.ownerId) + '\')">' +
+          escapeHtml(b.name) + ': ' + b.count + '</button>'
+        );
+      })
+      .join('');
+    return '<div class="team-breakdown">' + chips + '</div>';
+  }
 
   function tasksBodyHtml(tasks, canBulk) {
     var rows = tasks.map(taskRowHtml).join('');
@@ -221,11 +332,44 @@
     return App._tasksCanBulk;
   }
 
+  // Trae las Tasks de la pestaña activa. El desglose por persona (solo en
+  // TEAM) se calcula sobre el set COMPLETO que devolvió el servidor para
+  // ese tab, antes de aplicar el drill-down por dueño — si no, elegir a
+  // alguien solo dejaría verlo a él mismo en su propio desglose. La
+  // "versión" para el polling también se calcula sobre ese set completo
+  // (allTasksForVersion), igual que api_getTasksVersion — así el drill-down
+  // por persona (puramente client-side, nunca viaja al servidor) no hace
+  // que el polling piense todo el tiempo que algo cambió.
+  async function fetchTasksForCurrentTab() {
+    var tab = activeTaskTabOrDefault();
+    var filters = Object.assign({}, App.taskFilters, { tab: tab });
+    var allTasksForTab = await Api.listTasks(App.token, filters);
+    var breakdown = null;
+    var tasks = allTasksForTab;
+    if (tab === 'TEAM') {
+      breakdown = computeOwnerBreakdown(allTasksForTab);
+      if (App.teamOwnerFilter) {
+        tasks = allTasksForTab.filter(function (t) {
+          return String(t['Owner ID']) === String(App.teamOwnerFilter);
+        });
+      }
+    }
+    return { tab: tab, filters: filters, tasks: tasks, allTasksForVersion: allTasksForTab, breakdown: breakdown };
+  }
+
+  function composeTasksHtml(result, canBulk) {
+    return (
+      taskTabsBarHtml(taskTabsForUser(), result.tab) +
+      (result.breakdown ? teamBreakdownHtml(result.breakdown, App.teamOwnerFilter) : '') +
+      tasksBodyHtml(result.tasks, canBulk)
+    );
+  }
+
   async function renderTasksHtml() {
-    var tasks = await Api.listTasks(App.token, App.taskFilters);
+    var result = await fetchTasksForCurrentTab();
     var canBulk = await getCanBulkReassignCached();
-    App._tasksVersion = computeTasksVersionFromList(tasks);
-    return tasksBodyHtml(tasks, canBulk);
+    App._tasksVersion = computeTasksVersionFromList(result.allTasksForVersion);
+    return composeTasksHtml(result, canBulk);
   }
 
   // Endpoint liviano (solo count + Updated At más reciente): si no cambió
@@ -233,11 +377,13 @@
   // (evita perder el estado de scroll/foco sin necesidad).
   async function pollTasksList() {
     try {
-      var version = await Api.getTasksVersion(App.token, App.taskFilters);
+      var tab = activeTaskTabOrDefault();
+      var filters = Object.assign({}, App.taskFilters, { tab: tab });
+      var version = await Api.getTasksVersion(App.token, filters);
       if (versionsEqual(version, App._tasksVersion)) return;
-      var tasks = await Api.listTasks(App.token, App.taskFilters);
-      App._tasksVersion = computeTasksVersionFromList(tasks);
-      document.getElementById('content').innerHTML = tasksBodyHtml(tasks, App._tasksCanBulk);
+      var result = await fetchTasksForCurrentTab();
+      App._tasksVersion = computeTasksVersionFromList(result.allTasksForVersion);
+      document.getElementById('content').innerHTML = composeTasksHtml(result, App._tasksCanBulk);
     } catch (e) {
       // silencioso
     }

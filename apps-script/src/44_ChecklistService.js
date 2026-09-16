@@ -33,6 +33,15 @@ var ChecklistService = {
   // El Source Record ID de la Task creada es el ID de ESTA ejecución
   // (Checklist_Runs), no el ID de la plantilla en Checklist_Config
   // (docs/01-modelo-datos.md → Checklist_Runs).
+  //
+  // Visibility=SUPERVISION por defecto (antes OPERATIONAL): una Task nacida
+  // de "+Convertir en Task" es, por definición, el seguimiento de un
+  // problema de Checklist/Bitácora — la pestaña "Supervisión" del frontend
+  // (docs/12-tabs-tasks-logout.md) agrupa exactamente las Tasks con
+  // Visibility=SUPERVISION para que el Gerente/Supervisor las vea juntas
+  // en vez de mezcladas con el resto de Tasks del departamento. Un caller
+  // puede seguir pasando otra Visibility explícita si alguna vez hiciera
+  // falta (el override ya existía, solo cambió el default).
   convertRunToTask: function (runId, actingUserId, taskOverrides) {
     var run = new ChecklistRunsRepository().findById(runId);
     if (!run) throw new Error('Ejecución de checklist no encontrada.');
@@ -47,7 +56,7 @@ var ChecklistService = {
       ownerId: overrides.ownerId || actingUserId,
       priority: overrides.priority || (config ? config.Prioridad : 'P2'),
       dueDate: overrides.dueDate || '',
-      visibility: overrides.visibility || Config.TASK_VISIBILITY.OPERATIONAL,
+      visibility: overrides.visibility || Config.TASK_VISIBILITY.SUPERVISION,
       operationalScope: overrides.operationalScope || Config.TASK_SCOPE.DEPARTMENT,
       originDepartment: run.Departamento,
       systemOrigin: Config.SYSTEM_ORIGIN.CHECKLIST,

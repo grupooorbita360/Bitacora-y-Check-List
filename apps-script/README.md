@@ -51,12 +51,12 @@ html/
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api).
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM).
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
-  *.e2e.test.js              Specs de Playwright (node:test): auth, lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist.
+  *.e2e.test.js              Specs de Playwright (node:test): auth (incluye logout), lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist, pestañas de Tasks por rol + desglose por persona.
 scripts/
   build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
 dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
@@ -292,3 +292,24 @@ Checklist que quedaba pendiente:
 
 Detalle completo (incluye qué quedó deliberadamente fuera de la vista de
 Checklist y por qué) en `docs/11-participantes-dashboard-checklist.md`.
+
+## Bug de logout y pestañas de Tasks por rol
+
+1. **Logout se quedaba congelado** en "Verificando sesión…" — `logout()`
+   solo cambiaba de pantalla sin volver a correr la detección de sesión.
+   Corregido llamando `bootApp()` en vez de `navigate('login')`.
+2. **Pestañas de Tasks por rol** (sección 44 del prompt maestro): Mis
+   Tasks/Equipo/En espera/Completadas para todos; Supervisor agrega
+   Supervisión; Manager/Director agregan Departamento (en vez de Equipo) y
+   Management. Cada pestaña es un filtro adicional (`filters.tab` en
+   `98_Api.js`) sobre lo que `TaskPermissionService.canView` ya permite
+   ver. La pestaña Equipo/Departamento incluye un desglose por persona
+   (cuántas Tasks tiene cada quien, clic para filtrar solo esa persona), y
+   la pestaña Supervisión agrupa las Tasks nacidas de "+Convertir en Task"
+   sobre un Checklist con problema (`ChecklistService.convertRunToTask`
+   ahora las marca `Visibility=SUPERVISION` por defecto), en vez de
+   mezclarlas con el resto del departamento.
+
+Detalle completo (incluye la nota de seguridad sobre qué SÍ y qué NO
+enforca todavía el filtro por Visibility) en
+`docs/12-tabs-tasks-logout.md`.
