@@ -23,6 +23,24 @@
  *                       Take Ownership con Alcance=SHARED no necesita que el
  *                       usuario ya sea Participant, igual que en el caso
  *                       "Task Shared" de la sección 10).
+ *
+ * Visibility (docs/02-reglas-negocio.md) es una barrera ADICIONAL, evaluada
+ * antes que Alcance — no lo reemplaza, se le suma con AND (docs/13-
+ * visibility-enforcement.md). Antes de este enforcement, Visibility era
+ * puramente decorativo (solo lo usaban las pestañas de Tasks en el
+ * cliente); ahora es un requisito real de `can()`, así que ninguna acción
+ * (ver, comentar, completar, etc.) puede violarlo ni siquiera llamando a
+ * la API directo, saltándose el cliente:
+ *   OPERATIONAL -> sin restricción adicional (solo el Alcance de siempre).
+ *   RESTRICTED  -> Owner, Participant o Admin únicamente.
+ *   SUPERVISION -> rol Supervisor o superior (Supervisor/Manager/Director),
+ *                  o Admin. Sin excepción para el Owner/Participant: una
+ *                  Task de seguimiento (ej. Checklist con problema) puede
+ *                  tener como Owner a quien reportó el problema sin que
+ *                  eso le dé acceso — es justamente el caso de uso que
+ *                  motivó este enforcement (Fase 5: Warnings/coaching).
+ *   MANAGEMENT  -> rol Manager o superior (Manager/Director), o Admin.
+ *                  Mismo criterio, sin excepción para Owner/Participant.
  */
 var TaskPermissionService = {
   canView: function (userId, task) {
@@ -31,6 +49,7 @@ var TaskPermissionService = {
 
   can: function (userId, action, task) {
     if (PermissionService.isAdmin(userId)) return true;
+    if (!this._visibilityAllows(userId, task)) return false;
 
     var permissions = new TaskPermissionsRepository();
     if (!permissions.actionExists(action)) {
@@ -48,6 +67,29 @@ var TaskPermissionService = {
     return scopes.some(function (scope) {
       return self._evaluateScope(scope, userId, task);
     });
+  },
+
+  // Barrera de Visibility — ver cabecera del archivo. Se evalúa para TODA
+  // acción sobre una Task concreta (no solo VIEW): si no se puede ni ver,
+  // tampoco se puede actuar sobre ella. isAdmin ya se resolvió en can()
+  // antes de llegar acá.
+  _visibilityAllows: function (userId, task) {
+    var visibility = task.Visibility || Config.TASK_VISIBILITY.OPERATIONAL;
+    if (visibility === Config.TASK_VISIBILITY.OPERATIONAL) return true;
+
+    if (visibility === Config.TASK_VISIBILITY.RESTRICTED) {
+      return String(task['Owner ID']) === String(userId) || this._isParticipant(userId, task['Task ID']);
+    }
+
+    var roles = PermissionService.getRoles(userId);
+    if (visibility === Config.TASK_VISIBILITY.SUPERVISION) {
+      return this._isSupervisorOrAbove(roles);
+    }
+    if (visibility === Config.TASK_VISIBILITY.MANAGEMENT) {
+      return this._isManagerOrAbove(roles);
+    }
+    // Visibility desconocida/corrupta: negar por defecto (fail-closed).
+    return false;
   },
 
   // Capacidad general de usar bulk reassign (sin Task concreta todavía).
@@ -133,5 +175,9 @@ var TaskPermissionService = {
 
   _isManagerOrAbove: function (roles) {
     return roles.indexOf(Config.ROLES.MANAGER) !== -1 || roles.indexOf(Config.ROLES.DIRECTOR) !== -1;
+  },
+
+  _isSupervisorOrAbove: function (roles) {
+    return roles.indexOf(Config.ROLES.SUPERVISOR) !== -1 || this._isManagerOrAbove(roles);
   }
 };

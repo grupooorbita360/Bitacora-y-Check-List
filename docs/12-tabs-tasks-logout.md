@@ -77,18 +77,17 @@ perderla. Lo que sí excluye siempre es Visibility Supervisión/Management,
 que es justamente el requisito de "agruparlas en un solo lugar en vez de
 mezcladas con todo lo demás".
 
-**Nota de seguridad:** `Visibility` (`OPERATIONAL | SUPERVISION |
-MANAGEMENT | RESTRICTED`, ver `docs/02-reglas-negocio.md`) todavía **no
-está enforced** dentro de `TaskPermissionService.canView` — hoy solo
-`Operational Scope` lo está, vía las filas reales de `Task_Permissions`.
-Los filtros `SUPERVISION`/`MANAGEMENT` de esta pestaña son un criterio de
-**presentación**, no de control de acceso: si algún día un Agent pudiera
-ver (por `canView`) una Task con Visibility=MANAGEMENT, este filtro la
-mostraría igual en su pestaña Management si el cliente se la ofreciera —
-lo único que impide eso hoy es que el cliente no le muestra esa pestaña a
-un Agent, no una restricción del backend. Cerrar esa brecha (enforcar
-Visibility dentro de `canView`) es trabajo aparte, no pedido en esta
-sesión.
+**Nota de seguridad (actualizada — ver `docs/13-visibility-enforcement.md`):**
+al escribir esta sección, `Visibility` (`OPERATIONAL | SUPERVISION |
+MANAGEMENT | RESTRICTED`) todavía no estaba enforced dentro de
+`TaskPermissionService.canView` — los filtros `SUPERVISION`/`MANAGEMENT`
+de esta pestaña eran un criterio de **presentación**, no de control de
+acceso real. Esa brecha se cerró antes de Fase 5: `canView` (y por lo
+tanto `can()` para cualquier acción) ahora enforca `Visibility` como una
+barrera real, independiente del Alcance. Ver `docs/13-visibility-enforcement.md`
+para la regla exacta y por qué también corrigió la afirmación de la
+sección "Paridad con las tarjetas del Dashboard" de más abajo (un Agent
+Owner de su propia Task de Supervisión **ya no** la ve, a propósito).
 
 ### Paridad con las tarjetas del Dashboard
 
@@ -109,9 +108,17 @@ lo que aparece en Tasks dejarían de coincidir:
   excluía) — se corrigió por el lado del Dashboard, no relajando el filtro
   de `TEAM`, precisamente para no volver a mezclar esas Tasks.
 - El scope `OWN` (Agent) no cambió: sigue siendo simplemente `Owner ID` =
-  yo, sin exclusión de Visibility — si un Agent es dueño de su propia Task
-  de seguimiento con problema, debe seguir viéndola en "Mis Tasks" y en el
-  conteo de su propio Dashboard; ocultársela sería activamente dañino.
+  yo, sin exclusión de Visibility en el filtro de `_dashboardScopeTasksForUser`
+  ni en el tab `MINE`. **Corrección sobre lo que decía esta sección
+  originalmente:** eso NO significa que un Agent siga viendo su propia
+  Task si es Visibility=SUPERVISION/MANAGEMENT — desde
+  `docs/13-visibility-enforcement.md`, `canView` la bloquea para él antes
+  de que el filtro por Owner de este scope siquiera se evalúe (por diseño:
+  ver la nota de seguridad de más arriba). El comentario "ocultársela
+  sería activamente dañino" describía la intención de este código en
+  particular (no discriminar por Owner en el propio filtro de scope), no
+  una garantía de que el Agent SIEMPRE vería esa Task — esa garantía la
+  da (o no) `canView`, una capa antes.
 
 ### Desglose por persona (pestaña Equipo/Departamento)
 

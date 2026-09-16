@@ -51,7 +51,7 @@ html/
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM).
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM), visibilityEnforcement (Visibility como barrera real).
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
@@ -310,6 +310,30 @@ Checklist y por qué) en `docs/11-participantes-dashboard-checklist.md`.
    ahora las marca `Visibility=SUPERVISION` por defecto), en vez de
    mezclarlas con el resto del departamento.
 
-Detalle completo (incluye la nota de seguridad sobre qué SÍ y qué NO
-enforca todavía el filtro por Visibility) en
-`docs/12-tabs-tasks-logout.md`.
+Detalle completo en `docs/12-tabs-tasks-logout.md` (la nota de seguridad
+original ahí quedó desactualizada por el cambio de abajo — la sección la
+señala y remite a `docs/13-visibility-enforcement.md`).
+
+## Visibility como barrera real (antes de Fase 5)
+
+`Visibility` (`OPERATIONAL | SUPERVISION | MANAGEMENT | RESTRICTED`) solo
+era un criterio de presentación para las pestañas de Tasks — ahora
+`TaskPermissionService.can()` (y por lo tanto `canView()`) lo enforca de
+verdad, como una barrera ADICIONAL al Alcance de siempre, para cualquier
+acción sobre una Task, no solo verla:
+
+- `OPERATIONAL`: sin restricción extra (solo el Alcance de siempre).
+- `RESTRICTED`: Owner, Participant o Admin únicamente.
+- `SUPERVISION`: rol Supervisor o superior, o Admin.
+- `MANAGEMENT`: rol Manager o superior, o Admin.
+- Cualquier otro valor: se niega (fail-closed), nunca se asume
+  `OPERATIONAL` por defecto.
+
+`SUPERVISION`/`MANAGEMENT` **no tienen excepción por Owner/Participant**
+a propósito — el sujeto de una Task de Supervisión (ej. un Warning en
+Fase 5) no debe tener acceso solo por figurar como Owner del registro.
+Verificado explícitamente que el flujo de Checklist→Supervisión sigue
+funcionando extremo a extremo para quien sí tiene rol suficiente.
+
+Detalle completo (la regla exacta, por qué se resuelve en un solo lugar,
+y qué corrigió en `docs/12`) en `docs/13-visibility-enforcement.md`.
