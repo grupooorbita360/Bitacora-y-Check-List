@@ -123,6 +123,15 @@ var Config = {
     DATA: 'DATA'
   },
 
+  // Mismo conjunto que ya ofrece el <select> de Client_Modals.html
+  // (docs/11-participantes-dashboard-checklist.md) — formalizado acá para
+  // que ChecklistService.recordRun pueda validarlo igual que cualquier
+  // otro enum de Config, en vez de aceptar cualquier string.
+  CHECKLIST_RESULT: {
+    OK: 'OK',
+    PROBLEMA: 'PROBLEMA'
+  },
+
   // Confirmados contra el listado real de Task_History (18 eventos): se
   // agregó ASSIGNED (asignación explícita de Owner distinta de quien crea),
   // se quitó ADJUSTMENT_CANCELLED (no existe — cancelar un ajuste queda

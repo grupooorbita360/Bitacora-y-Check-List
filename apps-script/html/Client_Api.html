@@ -64,8 +64,8 @@
     listDepartments: function () {
       return callServer('api_listDepartments');
     },
-    listAssignableUsers: function (token, departmentId) {
-      return callServer('api_listAssignableUsers', token, departmentId);
+    listAssignableUsers: function (token, departmentId, taskId) {
+      return callServer('api_listAssignableUsers', token, departmentId, taskId);
     },
     getTaskDetail: function (token, taskId) {
       return callServer('api_getTaskDetail', token, taskId);

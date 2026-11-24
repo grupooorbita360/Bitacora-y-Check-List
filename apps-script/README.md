@@ -51,12 +51,12 @@ html/
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
   mocks/gasGlobals.js        Mocks de SpreadsheetApp/PropertiesService/Utilities/Session.
-  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM), visibilityEnforcement (Visibility como barrera real), checklistConvertRole (convertir es acción de Supervisor+).
+  *.test.js                  Tests (node:test): repository (incluye cache de SheetRepository), auth, permission, taskLifecycle, checklist, dashboard, uxFixes (participantes/overdueOnly/checklist vía Api), taskTabs (filters.tab por pestaña, paridad Dashboard↔TEAM), visibilityEnforcement (Visibility como barrera real), checklistConvertRole (convertir es acción de Supervisor+), visibilityAssignmentGaps (reassign/bulkReassign/takeOwnership/addParticipant respetan Visibility).
 devserver/
   server.js                  createDevServer({port}) + CLI — backend real detrás de html/ en un navegador.
 e2e/
   helpers.js                 launchBrowser() + withDevServer() (backend aislado por spec).
-  *.e2e.test.js              Specs de Playwright (node:test): auth (incluye logout), lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist, pestañas de Tasks por rol + desglose por persona, checklistConvertRole (oferta de convertir solo a Supervisor+).
+  *.e2e.test.js              Specs de Playwright (node:test): auth (incluye logout), lifecycle, adjustments, auto-refresh, layout+dashboard por rol, selector de participantes/tarjetas del Dashboard/Checklist, pestañas de Tasks por rol + desglose por persona, checklistConvertRole (oferta de convertir solo a Supervisor+), visibilityAssignmentGaps (selectores de Owner/Participant no ofrecen a quien no alcanza).
 scripts/
   build-gas.js               Aplana src/+html/+appsscript.json en dist-gas/ — ver "Desplegar" abajo.
 dist-gas/                    GENERADO (gitignored) — esto es lo que se sube con clasp o se copia a mano.
@@ -353,3 +353,28 @@ también se oculta en el cliente para quien no califica.
 Detalle completo (incluye qué se dejó deliberadamente fuera: un
 mecanismo de descubrimiento de problemas todavía no convertidos) en
 `docs/14-checklist-convert-role.md`.
+
+## Dos huecos más de Visibility: reassign/bulkReassign y addParticipant
+
+El enforcement de `canView` no evitaba quedar como Owner/Participant de
+una Task que el propio rol ya no deja ver: `TaskService._applyReassign`
+(usada por `reassign`/`bulkReassign`), `addParticipant` y `takeOwnership`
+(este último no estaba en el pedido original, se cerró igual por tener el
+mismo hueco — ver el doc) validaban permisos y `Task_Assignment_Config`,
+pero nunca que el rol del nuevo Owner/Participant alcanzara la Visibility
+de la Task. `TaskPermissionService.canReceiveAssignment(candidateUserId,
+task)` (nuevo) cierra las tres, reusando
+`PermissionService.isSupervisorOrAbove`/`isManagerOrAbove` — sin chequeo
+nuevo para OPERATIONAL/RESTRICTED (el propio acto de asignar ya satisface
+el único requisito de RESTRICTED). Los selectores de "Nuevo Owner"
+(Reasignar/Tomar Ownership) y "Agregar Participante" ahora excluyen a
+quien no alcanza (`api_listAssignableUsers(token, departmentId, taskId)`
+opcionalmente filtrado; `api_getTaskDetail` devuelve `eligibleAssignees`
+además de `assignableUsers`, que se mantiene sin filtrar para no romper
+el nombre mostrado de participantes ya agregados).
+
+Extra en el mismo cierre: `ChecklistService.recordRun` ahora valida que
+`Resultado` sea `OK`/`PROBLEMA` (`Config.CHECKLIST_RESULT`), antes
+aceptaba cualquier string.
+
+Detalle completo en `docs/15-visibility-assignment-gaps.md`.

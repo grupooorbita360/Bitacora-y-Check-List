@@ -13,6 +13,12 @@ var ChecklistService = {
   recordRun: function (checklistConfigId, actingUserId, resultado, valor, comentario) {
     var config = new ChecklistConfigRepository().findById(checklistConfigId);
     if (!config) throw new Error('Actividad de checklist no encontrada.');
+    var validResults = Object.keys(Config.CHECKLIST_RESULT).map(function (k) {
+      return Config.CHECKLIST_RESULT[k];
+    });
+    if (validResults.indexOf(resultado) === -1) {
+      throw new Error('Resultado inválido: "' + resultado + '". Debe ser uno de ' + validResults.join(', ') + '.');
+    }
 
     var runs = new ChecklistRunsRepository();
     var runId = runs.nextSequentialId('RUN', 6);

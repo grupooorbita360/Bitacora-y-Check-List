@@ -121,7 +121,7 @@
   // ---------------------------------------------------------------------
   async function openTakeOwnershipModal(taskId) {
     var t = App.currentDetail.task;
-    var users = await Api.listAssignableUsers(App.token, t.Department);
+    var users = await Api.listAssignableUsers(App.token, t.Department, taskId);
     openModal(
       '<h3>Tomar Ownership</h3>' +
       '<p class="modal-subtitle">No crea un Participant — el Owner anterior queda en el historial.</p>' +
@@ -146,7 +146,7 @@
 
   async function openReassignModal(taskId) {
     var t = App.currentDetail.task;
-    var users = await Api.listAssignableUsers(App.token, t.Department);
+    var users = await Api.listAssignableUsers(App.token, t.Department, taskId);
     openModal(
       '<h3>Reasignar Task</h3>' +
       '<div class="field"><label>Nuevo Owner</label><select id="modal-owner">' + userOptions(users) + '</select></div>' +
@@ -413,10 +413,8 @@
   // Checklist: registrar una ejecución (Checklist_Runs) y, si salió con un
   // problema, ofrecer convertirla en Task de seguimiento (los 3 endpoints
   // ya existían desde Fase 3 — ver 44_ChecklistService.js). "OK"/"PROBLEMA"
-  // no estaban formalizados en ningún doc de este proyecto (Resultado no
-  // tiene un enum validado en el backend); se usan estos dos porque son los
-  // únicos dos casos que el resto del sistema distingue (convertRunToTask
-  // solo tiene sentido para una ejecución "con problema").
+  // ahora son Config.CHECKLIST_RESULT (00_Config.js), validado en
+  // ChecklistService.recordRun — mismo conjunto que este <select> ofrece.
   // ---------------------------------------------------------------------
   function openRecordChecklistModal(checklistConfigId) {
     var item = (App._checklistItems || []).filter(function (i) {

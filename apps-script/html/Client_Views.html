@@ -446,7 +446,7 @@
       '</div>' +
       '<div class="detail-side">' +
       sectionSubtasks(detail.subtasks, safeTaskId, a) +
-      sectionParticipants(detail.participants, detail.assignableUsers, safeTaskId, a) +
+      sectionParticipants(detail.participants, detail.assignableUsers, detail.eligibleAssignees, safeTaskId, a) +
       '</div>' +
       '</div>'
     );
@@ -582,7 +582,7 @@
     return match ? match['Nombre Corto'] : userId;
   }
 
-  function sectionParticipants(participants, assignableUsers, taskId, actions) {
+  function sectionParticipants(participants, assignableUsers, eligibleAssignees, taskId, actions) {
     var items = participants
       .map(function (p) {
         return (
@@ -598,10 +598,14 @@
     // Nunca ofrecer de nuevo a alguien que ya es participante activo —
     // agregarlo otra vez no falla (TaskService.addParticipant lo trata
     // como no-op), pero confundiría verlo listado dos veces en el selector.
+    // Candidatos desde eligibleAssignees (no assignableUsers): ya viene
+    // filtrado por canReceiveAssignment — no ofrecer a quien de todos
+    // modos TaskService.addParticipant rechazaría por la Visibility de
+    // esta Task (docs/15-visibility-assignment-gaps.md).
     var currentParticipantIds = participants.map(function (p) {
       return String(p['User ID']);
     });
-    var candidates = assignableUsers.filter(function (u) {
+    var candidates = eligibleAssignees.filter(function (u) {
       return currentParticipantIds.indexOf(String(u['User ID'])) === -1;
     });
     return (

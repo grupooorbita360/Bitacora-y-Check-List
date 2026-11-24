@@ -92,6 +92,34 @@ var TaskPermissionService = {
     return false;
   },
 
+  // Verifica que un usuario CANDIDATO a convertirse en Owner o Participant
+  // de una Task alcance el nivel de rol que exige su Visibility — el
+  // mismo criterio de SUPERVISION/MANAGEMENT que usa _visibilityAllows,
+  // pero sin sus ramas de OPERATIONAL/RESTRICTED: esas no hacen falta
+  // acá porque el propio acto de reasignar/agregar ya satisface su único
+  // requisito (RESTRICTED exige Owner o Participant, y el candidato está
+  // justamente a punto de convertirse en eso). Sin este chequeo, alguien
+  // podía quedar como Owner/Participant de una Task SUPERVISION/MANAGEMENT
+  // que su propio rol ya no le permite ver (docs/15-visibility-assignment-gaps.md)
+  // — exactamente el hueco que _applyReassign/addParticipant/takeOwnership
+  // tenían antes de este chequeo.
+  //
+  // Usa las primitivas públicas de PermissionService (userId), no las
+  // internas de este archivo (roles ya resueltos) — son las mismas que ya
+  // reutiliza ChecklistService.convertRunToTask, sin duplicar la lista de
+  // roles una tercera vez.
+  canReceiveAssignment: function (candidateUserId, task) {
+    if (PermissionService.isAdmin(candidateUserId)) return true;
+    var visibility = task.Visibility || Config.TASK_VISIBILITY.OPERATIONAL;
+    if (visibility === Config.TASK_VISIBILITY.SUPERVISION) {
+      return PermissionService.isSupervisorOrAbove(candidateUserId);
+    }
+    if (visibility === Config.TASK_VISIBILITY.MANAGEMENT) {
+      return PermissionService.isManagerOrAbove(candidateUserId);
+    }
+    return true;
+  },
+
   // Capacidad general de usar bulk reassign (sin Task concreta todavía).
   canBulkReassign: function (userId) {
     if (PermissionService.isAdmin(userId)) return true;

@@ -275,8 +275,33 @@ function _assignableUsersForDepartment(departmentId) {
   });
 }
 
-function api_listAssignableUsers(token, departmentId) {
-  _resolveActingUserId(token);
+// Subconjunto de _assignableUsersForDepartment cuyo rol alcanza la
+// Visibility de UNA Task concreta (docs/15-visibility-assignment-gaps.md)
+// — para los selectores de "nuevo Owner"/"nuevo Participant", que no deben
+// ni ofrecer a alguien que TaskService rechazaría de todos modos al
+// reasignar/agregar. Nunca la fuente de verdad (esa sigue siendo
+// TaskPermissionService.canReceiveAssignment en el momento de la acción);
+// esto es solo para que el selector no ofrezca una opción condenada a fallar.
+function _eligibleAssigneesForTask(departmentId, task) {
+  return _assignableUsersForDepartment(departmentId).filter(function (u) {
+    return TaskPermissionService.canReceiveAssignment(u['User ID'], task);
+  });
+}
+
+// taskId es opcional — lo pasan Reassign/TakeOwnership (sí hay una Task
+// concreta contra la que filtrar); Nueva Task y Reasignar en bloque lo
+// omiten (sin Task todavía, o con varias de Visibility potencialmente
+// distinta — ver docs/15-visibility-assignment-gaps.md para por qué bulk
+// reassign no intenta pre-filtrar el selector y en cambio reporta el
+// rechazo Task por Task, igual que ya hacía con Task_Assignment_Config).
+function api_listAssignableUsers(token, departmentId, taskId) {
+  var userId = _resolveActingUserId(token);
+  if (taskId) {
+    var task = new TasksRepository().findById(taskId);
+    if (task && TaskPermissionService.canView(userId, task)) {
+      return _toPlain(_eligibleAssigneesForTask(departmentId, task));
+    }
+  }
   return _toPlain(_assignableUsersForDepartment(departmentId));
 }
 
@@ -293,7 +318,14 @@ function api_getTaskDetail(token, taskId) {
     participants: new TaskParticipantsRepository().findByTask(taskId),
     pendingAdjustments: new TaskAdjustmentsRepository().findPendingByTask(taskId),
     availableActions: _computeAvailableActions(userId, task),
-    assignableUsers: _assignableUsersForDepartment(task.Department)
+    // assignableUsers: todo el departamento, sin filtrar — lo sigue usando
+    // sectionParticipants (Client_Views.html) para resolver el nombre de
+    // participantes YA agregados, incluso uno que no alcance (ej. se
+    // agregó antes de este chequeo, o la Task cambió de Visibility
+    // después). eligibleAssignees: subconjunto filtrado por
+    // canReceiveAssignment — el que sí debe ofrecerse para agregar.
+    assignableUsers: _assignableUsersForDepartment(task.Department),
+    eligibleAssignees: _eligibleAssigneesForTask(task.Department, task)
   });
 }
 

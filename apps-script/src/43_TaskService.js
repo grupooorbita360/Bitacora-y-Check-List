@@ -145,6 +145,9 @@ var TaskService = {
     if (!TaskAssignmentService.canAssignTo(actingUserId, newOwnerId, TaskAssignmentService.ACTION_RULES.TAKE_OWNERSHIP)) {
       throw new Error('El rol de "' + newOwner.Nombre + '" no puede tomar ownership según Task_Assignment_Config.');
     }
+    if (!TaskPermissionService.canReceiveAssignment(newOwnerId, task)) {
+      throw new Error('El rol de "' + newOwner.Nombre + '" no alcanza la Visibility de esta Task (' + task.Visibility + ').');
+    }
 
     var previousOwnerId = task['Owner ID'];
     var updated = tasks.update(taskId, {
@@ -201,7 +204,12 @@ var TaskService = {
   },
 
   // assignmentActionRule en null omite la validación de Task_Assignment_Config
-  // (bulkReassign ya la valida una sola vez para todo el lote, arriba).
+  // (bulkReassign ya la valida una sola vez para todo el lote, arriba). El
+  // chequeo de Visibility (canReceiveAssignment) sí va Task por Task acá
+  // dentro — a diferencia de Task_Assignment_Config, la Visibility puede
+  // ser distinta en cada Task del lote, así que bulkReassign no puede
+  // validarla una sola vez para todo el batch; cae en el try/catch por
+  // Task que bulkReassign ya tiene, reportando el error solo para esa Task.
   _applyReassign: function (taskId, newOwnerId, actingUserId, comment, permissionAction, assignmentActionRule) {
     var tasks = new TasksRepository();
     var task = tasks.findById(taskId);
@@ -213,6 +221,9 @@ var TaskService = {
     if (!newOwner) throw new Error('El nuevo Owner no existe.');
     if (assignmentActionRule && !TaskAssignmentService.canAssignTo(actingUserId, newOwnerId, assignmentActionRule)) {
       throw new Error('El rol de "' + newOwner.Nombre + '" no puede ser el nuevo Owner según Task_Assignment_Config.');
+    }
+    if (!TaskPermissionService.canReceiveAssignment(newOwnerId, task)) {
+      throw new Error('El rol de "' + newOwner.Nombre + '" no alcanza la Visibility de esta Task (' + task.Visibility + ').');
     }
 
     var updated = tasks.update(taskId, {
@@ -256,6 +267,9 @@ var TaskService = {
     });
     if (validRoles.indexOf(roleInTask) === -1) {
       throw new Error('Role in Task inválido: "' + roleInTask + '". Debe ser uno de ' + validRoles.join(', ') + '.');
+    }
+    if (!TaskPermissionService.canReceiveAssignment(userId, task)) {
+      throw new Error('No se puede agregar a esta persona como Participant: su rol no alcanza la Visibility de esta Task (' + task.Visibility + ').');
     }
 
     var participants = new TaskParticipantsRepository();
