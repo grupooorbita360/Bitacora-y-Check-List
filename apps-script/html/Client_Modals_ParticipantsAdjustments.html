@@ -1,0 +1,131 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Adjustments
+  // ---------------------------------------------------------------------
+  async function openRequestAdjustmentModal(taskId) {
+    var t = App.currentDetail.task;
+    var users = await Api.listAssignableUsers(App.token, t.Department);
+    openModal(
+      '<h3>Pedir Ajuste</h3>' +
+      '<p class="modal-subtitle">Tu Supervisor o Manager debe aprobarlo (Task_Adjustments).</p>' +
+      '<div class="field"><label>Tipo</label><select id="modal-type" onchange="toggleAdjustmentFields()">' +
+      '<option value="REASSIGN">Reasignar</option>' +
+      '<option value="CHANGE_DEPARTMENT">Cambiar Departamento</option>' +
+      '<option value="REASSIGN_AND_CHANGE_DEPARTMENT">Reasignar y Cambiar Departamento</option>' +
+      '<option value="OTHER">Otro</option>' +
+      '</select></div>' +
+      '<div class="field" id="adj-owner-field"><label>Nuevo Owner</label><select id="modal-new-owner">' + userOptions(users) + '</select></div>' +
+      '<div class="field" id="adj-dept-field" style="display:none"><label>Nuevo Departamento</label><select id="modal-new-dept">' +
+      deptOptions(App.departments) +
+      '</select></div>' +
+      '<div class="field"><label>Motivo</label><textarea id="modal-reason" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitRequestAdjustment(\'' + escapeJsString(taskId) + '\')">Enviar</button></div>'
+    );
+  }
+
+  function toggleAdjustmentFields() {
+    var type = document.getElementById('modal-type').value;
+    document.getElementById('adj-owner-field').style.display =
+      type === 'REASSIGN' || type === 'REASSIGN_AND_CHANGE_DEPARTMENT' ? '' : 'none';
+    document.getElementById('adj-dept-field').style.display =
+      type === 'CHANGE_DEPARTMENT' || type === 'REASSIGN_AND_CHANGE_DEPARTMENT' ? '' : 'none';
+  }
+
+  async function submitRequestAdjustment(taskId) {
+    var type = document.getElementById('modal-type').value;
+    var reason = document.getElementById('modal-reason').value.trim();
+    var details = { reason: reason };
+    var ownerField = document.getElementById('modal-new-owner');
+    var deptField = document.getElementById('modal-new-dept');
+    if (ownerField.offsetParent !== null) details.newOwnerId = ownerField.value;
+    if (deptField.offsetParent !== null) details.newDepartmentId = deptField.value;
+    try {
+      await Api.requestAdjustment(App.token, taskId, type, details);
+      closeModal();
+      toast('Ajuste solicitado.', 'success');
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  function openResolveAdjustmentModal(adjustmentId, decision) {
+    openModal(
+      '<h3>' + (decision === 'APPROVED' ? 'Aprobar' : 'Rechazar') + ' Ajuste</h3>' +
+      '<div class="field"><label>Comentario</label><textarea id="modal-comment" rows="3"></textarea></div>' +
+      '<div id="modal-error" class="form-error"></div>' +
+      '<div class="modal-actions"><button onclick="closeModal()">Cancelar</button>' +
+      '<button class="primary" onclick="submitResolveAdjustment(\'' + escapeJsString(adjustmentId) + '\',\'' + decision + '\')">Confirmar</button></div>'
+    );
+  }
+
+  async function submitResolveAdjustment(adjustmentId, decision) {
+    var comment = document.getElementById('modal-comment').value.trim();
+    try {
+      await Api.resolveAdjustment(App.token, adjustmentId, decision, comment);
+      closeModal();
+      toast('Ajuste resuelto.', 'success');
+      if (App.route.name === 'task-detail') render();
+    } catch (e) {
+      document.getElementById('modal-error').textContent = e.message;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Comments / Subtasks / Participants (formularios inline, no modal)
+  // ---------------------------------------------------------------------
+  async function submitComment(taskId) {
+    var input = document.getElementById('new-comment-input');
+    var text = input.value.trim();
+    if (!text) return;
+    try {
+      await Api.addComment(App.token, taskId, text);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitSubtask(taskId) {
+    var input = document.getElementById('new-subtask-input');
+    var title = input.value.trim();
+    if (!title) return;
+    try {
+      await Api.addSubtask(App.token, taskId, title);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function completeSubtask(subtaskId) {
+    try {
+      await Api.completeSubtask(App.token, subtaskId);
+      await refreshTaskDetail(App.route.taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitAddParticipant(taskId) {
+    var select = document.getElementById('new-participant-select');
+    if (!select || !select.value) return;
+    try {
+      await Api.addParticipant(App.token, taskId, select.value);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+
+  async function submitRemoveParticipant(taskId, userId) {
+    try {
+      await Api.removeParticipant(App.token, taskId, userId);
+      await refreshTaskDetail(taskId);
+    } catch (e) {
+      showError(e);
+    }
+  }
+</script>

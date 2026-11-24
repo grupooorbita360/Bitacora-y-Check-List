@@ -1,0 +1,48 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Sistema genérico de modal (overlay + caja) reutilizado por todos los
+  // formularios de acción — progressive disclosure: cada modal solo pide
+  // lo que esa acción específica necesita.
+  // ---------------------------------------------------------------------
+  function openModal(html) {
+    closeModal();
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'modal-overlay';
+    overlay.innerHTML = '<div class="modal-box">' + html + '</div>';
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeModal();
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function closeModal() {
+    var el = document.getElementById('modal-overlay');
+    if (el) el.remove();
+  }
+
+  function userOptions(users, defaultUserId) {
+    return users
+      .map(function (u) {
+        return (
+          '<option value="' + escapeHtml(u['User ID']) + '"' + (u['User ID'] === defaultUserId ? ' selected' : '') + '>' +
+          escapeHtml(u['Nombre Corto']) + '</option>'
+        );
+      })
+      .join('');
+  }
+
+  function deptOptions(depts) {
+    return depts
+      .map(function (d) {
+        return '<option value="' + escapeHtml(d['Department ID']) + '">' + escapeHtml(d.Nombre) + '</option>';
+      })
+      .join('');
+  }
+
+  async function refreshTaskDetail(taskId) {
+    if (App.route.name === 'task-detail' && App.route.taskId === taskId) {
+      render();
+    }
+  }
+</script>
