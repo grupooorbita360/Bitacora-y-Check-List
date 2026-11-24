@@ -34,19 +34,36 @@ src/
   40_TaskPermissionService.js  Motor de permisos de Tasks (ver docs/06-fase-3-decisiones.md).
   41_TaskHistoryService.js
   42_TaskConfigService.js     Task Types permitidos por rol/departamento (Task_Config).
-  43_TaskService.js           CRUD, lifecycle, comments, participants, subtasks, adjustments, bulk reassign.
+  43_TaskService.js           CRUD (create/get) + cabecera con la convención del split (ver docs/16-file-split-map.md).
+  43_TaskServiceLifecycle.js  Transiciones de Status (OPEN/COMPLETE/SNOOZE/RESUME/CANCEL/REOPEN).
+  43_TaskServiceOwnership.js  Tomar ownership, reasignar (individual y en bloque).
+  43_TaskServiceComments.js   Agregar comentarios y leer el historial.
+  43_TaskServiceParticipants.js  Agregar/quitar Participants.
+  43_TaskServiceSubtasks.js   Crear/completar/cancelar subtareas.
+  43_TaskServiceAdjustments.js  Pedir/resolver/cancelar un ajuste (reasignar/cambiar depto).
   44_ChecklistService.js      Checklist_Config/Checklist_Runs + conversión a Task.
   90_Setup.js                bootstrapTestEnvironment(): crea hojas + siembra data de prueba (Fase 2).
   95_SetupTasks.js           Crea/siembra las hojas de Tasks y Checklist (Fase 3).
-  98_Api.js                  Única capa que el cliente invoca (wrappers delgados sobre los Services).
+  98_Api.js                  Helpers compartidos (_resolveActingUserId/_toPlain) + Auth/bootstrap. Cabecera con la convención del split.
+  98_ApiDashboard.js         api_getDashboard + alcance por rol.
+  98_ApiTasks.js             Lista/filtros/pestañas, creación, Task Types, departamentos, usuarios asignables.
+  98_ApiTaskActions.js       Detalle de Task, versión liviana, botones disponibles, y el resto de las acciones.
+  98_ApiChecklist.js         Listar actividades, registrar ejecución, convertir a Task.
   99_WebApp.js               doGet() + include() — entry point del Web App (Fase 4).
 html/
   Index.html                 Shell: incluye Styles + los Client_*.
   Styles.html                 CSS (desktop-first).
   Client_Api.html             callServer() — google.script.run en prod, fetch en el dev server.
   Client_State.html           Estado de la app, router por hash, toasts, formatos.
-  Client_Views.html           Render de Login/Dashboard/Tasks/Task Detail/Checklist.
-  Client_Modals.html          Modales de acción (Nueva Task, Reasignar, Ajustes, etc.).
+  Client_Views_Login.html     Dispatcher principal (login vs. shell+contenido según la ruta).
+  Client_Views_Dashboard.html Render del Dashboard.
+  Client_Views_Tasks.html     Render de Tasks (pestañas por rol + lista + filtros + búsqueda).
+  Client_Views_TaskDetail.html  Render del Task Detail.
+  Client_Views_Checklist.html Render de Checklist.
+  Client_Modals_Shared.html   Sistema genérico de modal (overlay + caja) reutilizado por todos los formularios.
+  Client_Modals_Task.html     Modales de lifecycle, reasignar, tomar ownership.
+  Client_Modals_ParticipantsAdjustments.html  Modales de Participantes y Adjustments.
+  Client_Modals_Checklist.html  Modal de registrar ejecución + convertir a Task.
   Client_Main.html            Bootstrap de la app (login + primera render).
 test/
   loadGas.js                 Carga src/*.js en un vm.Context de Node con los mocks.
@@ -68,6 +85,10 @@ módulos: todo vive en un mismo scope global, y el orden de cómo se leen/
 concatenan importa (una clase que extiende otra debe cargarse después).
 Los tests cargan los archivos en ese mismo orden para probar exactamente lo
 que se copiaría al proyecto real.
+
+Ver **docs/16-file-split-map.md** para el mapa completo de qué vive en
+cada archivo (TaskService y Api, cada uno partido en varios) y la regla
+de "si vas a cambiar X, editá solo el archivo Y".
 
 ## Correr los tests localmente
 
