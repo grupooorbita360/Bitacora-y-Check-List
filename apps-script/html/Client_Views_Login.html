@@ -1,0 +1,111 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Dispatcher principal: decide login vs. shell+contenido según la ruta.
+  // ---------------------------------------------------------------------
+  async function render() {
+    stopPolling();
+    var app = document.getElementById('app');
+    if (!App.user) {
+      app.innerHTML = renderLoginHtml();
+      return;
+    }
+    app.innerHTML = renderShellHtml();
+    var content = document.getElementById('content');
+    content.innerHTML = '<div class="empty-state">Cargando…</div>';
+    try {
+      if (App.route.name === 'dashboard') {
+        content.innerHTML = await renderDashboardHtml();
+        schedulePolling(pollDashboard);
+      } else if (App.route.name === 'tasks') {
+        content.innerHTML = await renderTasksHtml();
+        schedulePolling(pollTasksList);
+      } else if (App.route.name === 'task-detail') {
+        content.innerHTML = await renderTaskDetailHtml(App.route.taskId);
+        schedulePolling(function () {
+          return pollTaskDetail(App.route.taskId);
+        });
+      } else if (App.route.name === 'checklist') {
+        // Sin polling: a diferencia de Dashboard/Tasks/Task Detail no hay
+        // estado compartido que otra sesión pueda cambiar por debajo —
+        // cada registro lo dispara el propio usuario desde este mismo tab.
+        content.innerHTML = await renderChecklistHtml();
+      }
+    } catch (e) {
+      content.innerHTML = '<div class="empty-state">' + escapeHtml(e.message) + '</div>';
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Login (sección: Auth de dos vías, docs/01-modelo-datos.md)
+  // ---------------------------------------------------------------------
+  function renderLoginHtml() {
+    var state = App.loginState || { mode: 'LOADING' };
+
+    if (state.mode === 'LOADING') {
+      return '<div class="login-screen"><div class="login-card"><p class="subtitle">Verificando sesión…</p></div></div>';
+    }
+    if (state.mode === 'DENIED') {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+        '<h1>Acceso no configurado</h1>' +
+        '<p class="subtitle">Tu correo no está registrado como usuario activo. Contacta a un Admin para que te dé de alta.</p>' +
+        '</div></div>'
+      );
+    }
+    if (state.mode === 'ERROR') {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+        '<h1>No se pudo iniciar sesión</h1>' +
+        '<p class="login-error">' + escapeHtml(state.message) + '</p>' +
+        '</div></div>'
+      );
+    }
+
+    var options = state.candidates
+      .map(function (c) {
+        return '<option value="' + escapeHtml(c.loginId) + '">' + escapeHtml(c.nombreCorto) + ' (' + escapeHtml(c.loginId) + ')</option>';
+      })
+      .join('');
+    return (
+      '<div class="login-screen"><div class="login-card">' +
+      '<h1>¿Quién eres?</h1>' +
+      '<p class="subtitle">Este correo es compartido por varios usuarios — elige el tuyo e ingresa tu PIN.</p>' +
+      '<div class="field"><label>Usuario</label><select id="login-user">' + options + '</select></div>' +
+      '<div class="field"><label>PIN (4 dígitos)</label>' +
+      '<input id="login-pin" class="pin-input" type="password" inputmode="numeric" maxlength="4" /></div>' +
+      '<button class="primary" style="width:100%" onclick="submitPinLogin()">Entrar</button>' +
+      '<div id="login-error" class="login-error"></div>' +
+      '</div></div>'
+    );
+  }
+
+  // ---------------------------------------------------------------------
+  // Layout / Navigation (desktop-first: sidebar fijo + topbar)
+  // ---------------------------------------------------------------------
+  function renderShellHtml() {
+    var onTasks = App.route.name === 'tasks' || App.route.name === 'task-detail';
+    return (
+      '<div class="app-shell">' +
+      '<aside class="sidebar">' +
+      '<div class="brand">Plataforma Operativa</div>' +
+      '<nav>' +
+      '<button class="' + (App.route.name === 'dashboard' ? 'active' : '') + '" onclick="navigate(\'dashboard\')"><span class="label">Dashboard</span></button>' +
+      '<button class="' + (onTasks ? 'active' : '') + '" onclick="navigate(\'tasks\')"><span class="label">Tasks</span></button>' +
+      '<button class="' + (App.route.name === 'checklist' ? 'active' : '') + '" onclick="navigate(\'checklist\')"><span class="label">Checklist</span></button>' +
+      '</nav>' +
+      '</aside>' +
+      '<div class="main-column">' +
+      '<div class="topbar">' +
+      '<div></div>' +
+      '<div class="user-info">' +
+      '<strong>' + escapeHtml(App.user.Nombre) + '</strong>' +
+      '<span>' + escapeHtml((App.user.roles || []).join(', ')) + '</span>' +
+      '<button onclick="logout()">Salir</button>' +
+      '</div>' +
+      '</div>' +
+      '<div class="content" id="content"></div>' +
+      '</div>' +
+      '</div>'
+    );
+  }
+</script>

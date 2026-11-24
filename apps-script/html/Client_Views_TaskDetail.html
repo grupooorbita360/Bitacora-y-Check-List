@@ -1,0 +1,233 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Task Detail
+  // ---------------------------------------------------------------------
+  function taskDetailBodyHtml(detail, taskId) {
+    var t = detail.task;
+    var a = detail.availableActions;
+    var safeTaskId = escapeJsString(taskId);
+
+    var actionButtons = [];
+    if (a.OPEN) actionButtons.push('<button class="primary" onclick="runTransition(\'' + safeTaskId + '\',\'OPEN\')">Abrir</button>');
+    if (a.RESUME) actionButtons.push('<button class="primary" onclick="runTransition(\'' + safeTaskId + '\',\'RESUME\')">Reanudar</button>');
+    if (a.COMPLETE) actionButtons.push('<button class="primary" onclick="openCommentModal(\'' + safeTaskId + '\',\'COMPLETE\',\'Completar Task\')">Completar</button>');
+    if (a.SNOOZE) actionButtons.push('<button onclick="openSnoozeModal(\'' + safeTaskId + '\')">Posponer</button>');
+    if (a.REOPEN) actionButtons.push('<button onclick="openCommentModal(\'' + safeTaskId + '\',\'REOPEN\',\'Reabrir Task\')">Reabrir</button>');
+    if (a.TAKE_OWNERSHIP) actionButtons.push('<button onclick="openTakeOwnershipModal(\'' + safeTaskId + '\')">Tomar Ownership</button>');
+    if (a.REASSIGN) actionButtons.push('<button onclick="openReassignModal(\'' + safeTaskId + '\')">Reasignar</button>');
+    if (a.CANCEL) actionButtons.push('<button class="danger" onclick="openCommentModal(\'' + safeTaskId + '\',\'CANCEL\',\'Cancelar Task\')">Cancelar</button>');
+    if (a.REQUEST_ADJUSTMENT) actionButtons.push('<button onclick="openRequestAdjustmentModal(\'' + safeTaskId + '\')">Pedir Ajuste</button>');
+
+    return (
+      '<button class="link" onclick="navigate(\'tasks\')">&larr; Volver a Tasks</button>' +
+      '<h2 class="view-title" style="margin-top:8px;">' + escapeHtml(t['Task Title']) + '</h2>' +
+      '<p class="view-subtitle">' + escapeHtml(t['Task ID']) + ' · ' + escapeHtml(t.Type) +
+      ' · <span class="badge status-' + t.Status + '">' + (STATUS_LABELS[t.Status] || t.Status) + '</span></p>' +
+      '<div class="action-bar">' + actionButtons.join('') + '</div>' +
+      '<div class="detail-layout">' +
+      '<div class="detail-main">' +
+      sectionOverview(t) +
+      sectionAdjustments(detail.pendingAdjustments, safeTaskId, a) +
+      sectionComments(detail.history, safeTaskId, a) +
+      sectionHistory(detail.history) +
+      '</div>' +
+      '<div class="detail-side">' +
+      sectionSubtasks(detail.subtasks, safeTaskId, a) +
+      sectionParticipants(detail.participants, detail.assignableUsers, detail.eligibleAssignees, safeTaskId, a) +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  function computeTaskVersionFromDetail(detail) {
+    return {
+      updatedAt: detail.task['Updated At'] ? new Date(detail.task['Updated At']).getTime() : 0,
+      historyCount: detail.history.length,
+      subtasksCount: detail.subtasks.length,
+      participantsCount: detail.participants.length,
+      pendingAdjustmentsCount: detail.pendingAdjustments.length
+    };
+  }
+
+  async function renderTaskDetailHtml(taskId) {
+    var detail = await Api.getTaskDetail(App.token, taskId);
+    App.currentDetail = detail;
+    App._taskDetailVersion = computeTaskVersionFromDetail(detail);
+    return taskDetailBodyHtml(detail, taskId);
+  }
+
+  // Endpoint liviano (Updated At + 4 conteos): solo si algo de eso cambió
+  // se vuelve a pedir el detalle completo (history/subtasks/participants/
+  // adjustments/availableActions) y se re-renderiza.
+  async function pollTaskDetail(taskId) {
+    try {
+      var version = await Api.getTaskVersion(App.token, taskId);
+      if (!version || versionsEqual(version, App._taskDetailVersion)) return;
+      var detail = await Api.getTaskDetail(App.token, taskId);
+      App.currentDetail = detail;
+      App._taskDetailVersion = computeTaskVersionFromDetail(detail);
+      document.getElementById('content').innerHTML = taskDetailBodyHtml(detail, taskId);
+    } catch (e) {
+      // silencioso
+    }
+  }
+
+  function sectionOverview(t) {
+    return (
+      '<div class="panel"><h3>Detalle</h3>' +
+      metaRow('Descripción', t.Description || '—') +
+      metaRow('Owner', t.Owner) +
+      metaRow('Departamento', t.Department) +
+      metaRow('Prioridad', t.Priority) +
+      metaRow('Visibility', t.Visibility) +
+      metaRow('Operational Scope', t['Operational Scope']) +
+      metaRow('Due Date', formatDate(t['Due Date'])) +
+      (t['Review Date'] ? metaRow('Review Date', formatDate(t['Review Date'])) : '') +
+      metaRow('Creada por', t['Created By'] + ' — ' + formatDateTime(t['Created At'])) +
+      metaRow('System Origin', t['System Origin']) +
+      '</div>'
+    );
+  }
+
+  function metaRow(k, v) {
+    return '<div class="meta-row"><span class="k">' + escapeHtml(k) + '</span><span>' + escapeHtml(v) + '</span></div>';
+  }
+
+  function sectionComments(history, taskId, actions) {
+    var comments = history.filter(function (h) {
+      return h['Event Type'] === 'COMMENT_ADDED';
+    });
+    var items = comments
+      .map(function (c) {
+        return (
+          '<div class="comment-item"><div>' + escapeHtml(c.Comment) + '</div>' +
+          '<div class="meta">' + escapeHtml(c['Performed By']) + ' · ' + formatDateTime(c['Created At']) + '</div></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><h3>Comentarios</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin comentarios todavía.</p>') +
+      (actions.ADD_COMMENT
+        ? '<div class="inline-form"><input id="new-comment-input" placeholder="Escribe un comentario…" />' +
+          '<button class="primary" onclick="submitComment(\'' + taskId + '\')">Enviar</button></div>'
+        : '') +
+      '</div>'
+    );
+  }
+
+  function sectionHistory(history) {
+    var items = history
+      .slice()
+      .reverse()
+      .map(function (h) {
+        return (
+          '<div class="history-item">' + (EVENT_LABELS[h['Event Type']] || h['Event Type']) +
+          '<div class="meta">' + escapeHtml(h['Performed By']) + ' · ' + formatDateTime(h['Created At']) + '</div></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><details class="collapsible"><summary>Historial completo (' + history.length + ')</summary>' + items + '</details></div>'
+    );
+  }
+
+  function sectionSubtasks(subtasks, taskId, actions) {
+    var items = subtasks
+      .map(function (s) {
+        var done = s.Status === 'COMPLETED';
+        return (
+          '<div class="list-item">' +
+          '<label style="display:flex;gap:8px;align-items:center;">' +
+          '<input type="checkbox" style="width:auto" ' + (done ? 'checked disabled' : '') +
+          (!done ? ' onchange="completeSubtask(\'' + escapeJsString(s['Subtask ID']) + '\')"' : '') + ' />' +
+          '<span style="' + (done ? 'text-decoration:line-through;color:var(--color-text-muted);' : '') + '">' + escapeHtml(s.Title) + '</span>' +
+          '</label></div>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="panel"><h3>Subtareas</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin subtareas.</p>') +
+      (actions.CREATE_SUBTASK
+        ? '<div class="inline-form"><input id="new-subtask-input" placeholder="Nueva subtarea…" />' +
+          '<button onclick="submitSubtask(\'' + taskId + '\')">Agregar</button></div>'
+        : '') +
+      '</div>'
+    );
+  }
+
+  // Nombre a mostrar para un User ID — nunca el ID crudo si tenemos el
+  // nombre a mano (assignableUsers, ya filtrado por el departamento de la
+  // Task). Si un participante ya no está en esa lista (p. ej. se
+  // desactivó, o cambió de departamento después de agregado) se muestra
+  // el ID tal cual, en vez de romper el render.
+  function userDisplayName(userId, assignableUsers) {
+    var match = assignableUsers.filter(function (u) {
+      return String(u['User ID']) === String(userId);
+    })[0];
+    return match ? match['Nombre Corto'] : userId;
+  }
+
+  function sectionParticipants(participants, assignableUsers, eligibleAssignees, taskId, actions) {
+    var items = participants
+      .map(function (p) {
+        return (
+          '<div class="list-item" style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span>' + escapeHtml(userDisplayName(p['User ID'], assignableUsers)) + ' <span class="view-subtitle" style="margin:0;display:inline;">(' + escapeHtml(p['Role in Task']) + ')</span></span>' +
+          (actions.REMOVE_PARTICIPANT
+            ? '<button class="link" onclick="submitRemoveParticipant(\'' + taskId + '\',\'' + escapeJsString(p['User ID']) + '\')">Quitar</button>'
+            : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    // Nunca ofrecer de nuevo a alguien que ya es participante activo —
+    // agregarlo otra vez no falla (TaskService.addParticipant lo trata
+    // como no-op), pero confundiría verlo listado dos veces en el selector.
+    // Candidatos desde eligibleAssignees (no assignableUsers): ya viene
+    // filtrado por canReceiveAssignment — no ofrecer a quien de todos
+    // modos TaskService.addParticipant rechazaría por la Visibility de
+    // esta Task (docs/15-visibility-assignment-gaps.md).
+    var currentParticipantIds = participants.map(function (p) {
+      return String(p['User ID']);
+    });
+    var candidates = eligibleAssignees.filter(function (u) {
+      return currentParticipantIds.indexOf(String(u['User ID'])) === -1;
+    });
+    return (
+      '<div class="panel"><h3>Participantes</h3>' +
+      (items || '<p class="view-subtitle" style="margin:0;">Sin participantes.</p>') +
+      (actions.ADD_PARTICIPANT
+        ? (candidates.length
+            ? '<div class="inline-form"><select id="new-participant-select">' + userOptions(candidates) + '</select>' +
+              '<button onclick="submitAddParticipant(\'' + taskId + '\')">Agregar</button></div>'
+            : '<p class="view-subtitle" style="margin:8px 0 0;">No hay más usuarios del departamento para agregar.</p>')
+        : '') +
+      '</div>'
+    );
+  }
+
+  function sectionAdjustments(pendingAdjustments, taskId, actions) {
+    if (!pendingAdjustments.length) return '';
+    var items = pendingAdjustments
+      .map(function (adj) {
+        var canResolve = actions.APPROVE_ADJUSTMENT;
+        var safeAdjustmentId = escapeJsString(adj['Adjustment ID']);
+        return (
+          '<div class="list-item">' +
+          '<div><strong>' + escapeHtml(adj.Type) + '</strong> — solicitado por ' + escapeHtml(adj['Requested By ID']) + '</div>' +
+          '<div class="meta">' + escapeHtml(adj.Reason || '') + '</div>' +
+          (canResolve
+            ? '<div style="margin-top:6px;display:flex;gap:8px;">' +
+              '<button class="primary" onclick="openResolveAdjustmentModal(\'' + safeAdjustmentId + '\',\'APPROVED\')">Aprobar</button>' +
+              '<button class="danger" onclick="openResolveAdjustmentModal(\'' + safeAdjustmentId + '\',\'REJECTED\')">Rechazar</button>' +
+              '</div>'
+            : '') +
+          '</div>'
+        );
+      })
+      .join('');
+    return '<div class="panel"><h3>Ajustes pendientes</h3>' + items + '</div>';
+  }
+</script>

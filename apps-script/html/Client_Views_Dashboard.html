@@ -1,0 +1,71 @@
+<script>
+  // ---------------------------------------------------------------------
+  // Dashboard
+  // ---------------------------------------------------------------------
+  function dashboardBodyHtml(stats) {
+    // scope viene de api_getDashboard: 'OWN' para Agent (solo lo suyo),
+    // 'DEPARTMENT' para Supervisor/Manager/Director/Admin (mismo criterio
+    // de TaskPermissionService.canView que ya usa la lista de Tasks).
+    var subtitle = stats.scope === 'DEPARTMENT' ? 'Resumen de las Tasks visibles para tu rol' : 'Resumen de tus Tasks';
+    // El clic en una tarjeta debe caer en la misma pestaña de Tasks cuyo
+    // alcance coincide con lo que esa tarjeta contó — si no, el número
+    // clicado y lo que aparece en Tasks no coincidirían (scope OWN -> "Mis
+    // Tasks"; DEPARTMENT -> "Equipo"/"Departamento", mismo tab TEAM para
+    // ambos, solo cambia la etiqueta según el rol — ver taskTabsForUser()).
+    var teamTab = stats.scope === 'DEPARTMENT' ? 'TEAM' : 'MINE';
+    return (
+      '<h2 class="view-title">Dashboard</h2>' +
+      '<p class="view-subtitle">' + subtitle + '</p>' +
+      '<div class="stat-grid">' +
+      statCard(stats.myTasks.pending, 'Pendientes', false, "goToTasksWithFilter('" + teamTab + "', 'PENDING')") +
+      statCard(stats.myTasks.inProgress, 'En Progreso', false, "goToTasksWithFilter('" + teamTab + "', 'IN_PROGRESS')") +
+      statCard(stats.myTasks.waiting, 'En Espera', false, "goToTasksWithFilter('" + teamTab + "', 'WAITING')") +
+      statCard(stats.myTasks.overdue, 'Vencidas', true, "goToTasksWithFilter('" + teamTab + "', null, true)") +
+      '</div>' +
+      '<button class="primary" onclick="navigate(\'tasks\')">Ver Tasks</button>'
+    );
+  }
+
+  async function renderDashboardHtml() {
+    var stats = await Api.getDashboard(App.token);
+    return dashboardBodyHtml(stats);
+  }
+
+  // getDashboard ya es liviano (solo cuenta Tasks visibles por estado), así
+  // que el polling del Dashboard lo llama directo cada 20s — a diferencia
+  // de Tasks/Task Detail no hace falta un chequeo de versión aparte.
+  async function pollDashboard() {
+    try {
+      var stats = await Api.getDashboard(App.token);
+      document.getElementById('content').innerHTML = dashboardBodyHtml(stats);
+    } catch (e) {
+      // silencioso: un refresco en segundo plano no debe interrumpir al usuario.
+    }
+  }
+
+  // onclickCall es siempre un literal fijo escrito por este mismo archivo
+  // (nunca un valor dinámico/dato), así que interpolarlo tal cual en el
+  // atributo es seguro — igual que el resto de los onclick="navigate(...)"
+  // sin argumentos de usuario ya usados en esta vista.
+  function statCard(value, label, overdue, onclickCall) {
+    return (
+      '<div class="stat-card' + (overdue ? ' overdue' : '') + '" onclick="' + onclickCall + '">' +
+      '<div class="value">' + value + '</div>' +
+      '<div class="label">' + label + '</div>' +
+      '</div>'
+    );
+  }
+
+  // Sección 44 del prompt maestro: clic en una tarjeta del Dashboard debe
+  // llevar a Tasks con ese estado como filtro activo, en la misma pestaña
+  // cuyo alcance corresponde al scope de esa tarjeta (tab viene ya resuelto
+  // desde dashboardBodyHtml según stats.scope) — mismo criterio de
+  // "Vencidas" que ya usa api_getDashboard (_isOverdueTask en 98_Api.js),
+  // para que el conteo de la tarjeta y lo que se ve en Tasks coincidan.
+  function goToTasksWithFilter(tab, status, overdueOnly) {
+    App.activeTaskTab = tab;
+    App.teamOwnerFilter = null;
+    App.taskFilters = { status: status || '', priority: '', mineOnly: false, overdueOnly: !!overdueOnly, search: '' };
+    navigate('tasks');
+  }
+</script>
